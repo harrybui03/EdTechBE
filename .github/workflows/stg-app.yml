@@ -1,0 +1,41 @@
+name: Staging Deploy
+
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STG_HOST }}
+          username: ${{ secrets.STG_USERNAME }}
+          key: ${{ secrets.STG_PRIVATE_KEY }}
+          port: ${{ secrets.STG_PORT }}
+          script: |
+            # The path to your project on the VPS
+            PROJECT_PATH="/home/ubuntu/EdTechBE"
+
+            # Check if the project directory exists
+            if [ -d "$PROJECT_PATH" ]; then
+              # If it exists, navigate into it and pull the latest changes
+              echo "Project directory exists. Pulling latest changes."
+              cd $PROJECT_PATH
+              git pull origin master
+            else
+              # If it doesn't exist, clone the repository
+              echo "Project directory does not exist. Cloning repository."
+              git clone ${{ secrets.GIT_REPO_URL }} $PROJECT_PATH
+              cd $PROJECT_PATH
+            fi
+
+            # Create the .env file from the GitHub secret
+            echo "${{ secrets.STG_ENV_FILE }}" > .env
+
+            # Build the docker images for services that have updates.
+            docker-compose build
+
+            # Stop the existing containers and start them with the new images.
+            docker-compose up -d --force-recreate --no-build
