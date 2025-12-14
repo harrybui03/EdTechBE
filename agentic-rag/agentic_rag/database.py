@@ -12,7 +12,7 @@ from psycopg2 import OperationalError
 
 def _db_config() -> Dict[str, str]:
     return {
-        "host": os.getenv("RAG_DB_HOST", os.getenv("POSTGRES_HOST", "localhost")),
+        "host": os.getenv("RAG_DB_HOST", os.getenv("DB_HOST", "localhost")),
         "port": os.getenv("RAG_DB_PORT", os.getenv("POSTGRES_PORT", "5432")),
         "dbname": os.getenv("RAG_DB_NAME", os.getenv("POSTGRES_DB", "postgres")),
         "user": os.getenv("RAG_DB_USER", os.getenv("POSTGRES_USER", "postgres")),

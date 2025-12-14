@@ -94,7 +94,7 @@ func Load(path string) (*Config, error) {
 			Protocol:    os.Getenv("APP_PROTOCOL"),
 		},
 		Server: Server{
-			HttpPort: os.Getenv("SERVER_PORT"),
+			HttpPort: os.Getenv("WORKER_SERVER_PORT"),
 			Workers:  workers,
 		},
 		DB:      db,

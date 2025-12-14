@@ -35,9 +35,6 @@ WORKDIR /app
 # Copy the compiled binary from the builder stage
 COPY --from=builder /main .
 
-# Copy the configuration file.
-# It's assumed your app will look for config.yaml in its working directory.
-COPY config.yaml .
 
 # Expose the port your application runs on (change 8080 if necessary)
 EXPOSE 8080
