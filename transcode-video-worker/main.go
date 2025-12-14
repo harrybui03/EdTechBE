@@ -2,17 +2,12 @@ package main
 
 import (
 	"github.com/rs/zerolog/log"
-	"os"
 	"worker-transcode/cmd"
 	"worker-transcode/config"
 )
 
 func main() {
-	path, err := os.Getwd()
-	if err != nil {
-		log.Fatal().Err(err).Send()
-	}
-	cfg, err := config.Load(path)
+	cfg, err := config.Load(".env")
 	if err != nil {
 		panic(err)
 	}

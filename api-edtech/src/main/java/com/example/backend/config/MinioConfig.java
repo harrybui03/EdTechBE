@@ -8,8 +8,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MinioConfig {
 
-    @Value("${minio.url}")
-    private String url;
+    @Value("${minio.api.url}")
+    private String apiUrl;
 
     @Value("${minio.access.key}")
     private String accessKey;
@@ -19,9 +19,33 @@ public class MinioConfig {
 
     @Bean
     public MinioClient minioClient() {
-        return MinioClient.builder()
-                .endpoint(url)
-                .credentials(accessKey, secretKey)
-                .build();
+        try {
+            String endpoint = this.apiUrl;
+            String host;
+            int port;
+            boolean secure = false;
+
+            if (endpoint.startsWith("https://")) {
+                endpoint = endpoint.substring(8);
+                secure = true;
+            } else if (endpoint.startsWith("http://")) {
+                endpoint = endpoint.substring(7);
+            }
+
+            String[] parts = endpoint.split(":");
+            host = parts[0];
+            if (parts.length > 1) {
+                port = Integer.parseInt(parts[1]);
+            } else {
+                port = secure ? 443 : 9000;
+            }
+
+            return MinioClient.builder()
+                    .endpoint(host, port, secure)
+                    .credentials(accessKey, secretKey)
+                    .build();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize Minio client with URL: '" + this.apiUrl + "'", e);
+        }
     }
 }
