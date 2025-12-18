@@ -74,7 +74,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	minioClient, err := minio.New(os.Getenv("MINIO_URL"), &minio.Options{
-		Creds:  credentials.NewStaticV4(os.Getenv("MINIO_ACCESS_ID"), os.Getenv("MINIO_SECRET_ACCESS_KEY"), ""),
+		Creds:  credentials.NewStaticV4(os.Getenv("MINIO_ROOT_USER"), os.Getenv("MINIO_ROOT_PASSWORD"), ""),
 		Secure: false,
 	})
 	if err != nil {
