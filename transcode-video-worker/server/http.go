@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +15,9 @@ import (
 	"worker-transcode/pkg/rabbitmq"
 	"worker-transcode/repository"
 	"worker-transcode/service"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 )
 
 func RunHttp(cfg *config.Config) {
@@ -30,7 +31,7 @@ func RunHttp(cfg *config.Config) {
 
 	conn, err := config.NewRabbitMQConn(ctx, cfg.Queue)
 	if err != nil {
-		zerolog.Ctx(ctx).Error().Err(err).Msg("NewRabbitMQConn")
+		zerolog.Ctx(ctx).Fatal().Err(err).Msg("Failed to connect to RabbitMQ. Exiting.")
 	}
 
 	repo := repository.NewRepo(cfg.DB)
