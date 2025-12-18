@@ -47,7 +47,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("error loading .env file from %s: %w", path, err)
 	}
 
-	psqlInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require",
+	psqlInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		os.Getenv("POSTGRES_USER"),
 		os.Getenv("POSTGRES_PASSWORD"),
 		os.Getenv("DB_HOST"),
