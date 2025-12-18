@@ -22,7 +22,7 @@ services:
       - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${HOST_PROJECT_PATH}/traefik.yml:/traefik.yml:ro
+      - ./traefik.yml:/traefik.yml:ro
       - traefik:/certs
 
   minio:
@@ -104,8 +104,8 @@ services:
     container_name: transcode-video-worker
     ports:
       - "8080:8080"
-    volumes:
-      - ${HOST_PROJECT_PATH}/.env:/app/.env
+    env_file:
+      - .env
     networks:
       - lms_network
     restart: always
