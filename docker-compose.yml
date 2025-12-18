@@ -126,3 +126,4 @@ volumes:
   db_data:
   minio_data:
   chroma-data:
+  traefik_data:
