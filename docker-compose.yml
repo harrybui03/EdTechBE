@@ -94,6 +94,7 @@ services:
       - "traefik.http.routers.minio-api.rule=Host(`minio.edtech.works`)"
       - "traefik.http.routers.minio-api.entrypoints=websecure"
       - "traefik.http.routers.minio-api.service=minio-api-svc"
+      - "traefik.http.routers.minio-api.tls=true"
       - "traefik.http.services.minio-api-svc.loadbalancer.server.port=9000"
       - "traefik.http.services.minio-api-svc.loadbalancer.passhostheader=true"
 
