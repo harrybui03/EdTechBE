@@ -24,7 +24,7 @@ java {
 }
 
 flyway {
-	url = 'jdbc:postgresql://localhost:5432/postgres'
+	url = 'jdbc:postgresql://db:5432/edtech_db'
 	user = 'postgres'
 	password = 'postgres'
 	locations = ['classpath:db/migration']
@@ -68,6 +68,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-amqp'
 	// PayOS Java SDK (pinned version)
     implementation 'vn.payos:payos-java:2.0.1'
+    implementation 'me.paulschwarz:dotenv-spring-boot-starter:4.0.0'
 
 	runtimeOnly 'org.postgresql:postgresql'
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql:10.4.1'
