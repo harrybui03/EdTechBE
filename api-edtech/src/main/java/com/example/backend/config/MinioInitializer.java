@@ -4,11 +4,16 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.SetBucketPolicyArgs;
+import io.minio.SetBucketCorsArgs;
+import io.minio.messages.CORSConfiguration;
+import io.minio.messages.CORSConfiguration.CORSRule;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Slf4j
 @Component
@@ -16,6 +21,8 @@ import org.springframework.stereotype.Component;
 public class MinioInitializer {
 
     private final MinioClient minioClient;
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
 
     @Value("${minio.bucket.name}")
     private String bucketName;
@@ -48,6 +55,7 @@ public class MinioInitializer {
     public void initialize() {
         try {
             ensureBucketExistsAndSetPolicy();
+            setBucketCors();
         } catch (Exception e) {
             log.error("Failed to initialize MinIO bucket '{}'. Please check MinIO connection and configuration.", bucketName, e);
         }
@@ -71,5 +79,30 @@ public class MinioInitializer {
                         .build()
         );
         log.info("MinIO bucket '{}' policy set to public read.", bucketName);
+    }
+
+    private void setBucketCors() {
+        try {
+            CORSConfiguration config = new CORSConfiguration(
+                    List.of(new CORSRule(
+                            List.of("*"), // Allowed headers
+                            List.of("GET", "PUT", "POST", "DELETE", "HEAD"), // Allowed methods
+                            allowedOrigins, // Allowed origins
+                            List.of("ETag"), // Expose headers
+                            null, // ID
+                            3000 // Maximum age seconds
+                    ))
+            );
+
+            minioClient.setBucketCors(
+                    SetBucketCorsArgs.builder()
+                            .bucket(bucketName)
+                            .config(config)
+                            .build()
+            );
+            log.info("MinIO bucket '{}' CORS configuration set successfully.", bucketName);
+        } catch (Exception e) {
+            log.error("Failed to set CORS configuration for bucket '{}'", bucketName, e);
+        }
     }
 }
