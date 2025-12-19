@@ -2,92 +2,101 @@ spring:
   application:
     name: backend
   flyway:
-    enabled: true
-    baseline-on-migrate: true
-    locations: classpath:db/migration
-    schemas: public
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:true}
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
+    schemas: ${SPRING_FLYWAY_SCHEMAS:public}
   mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${SPRING_MAIL_USERNAME}
-    password: ${SPRING_MAIL_PASSWORD}
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:buihuyhoang2709.dev@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:sdbecwnqueroxhiq}
     properties:
       mail:
         smtp:
-          auth: true
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
           starttls:
-            enable: true
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
   datasource:
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
-    driver-class-name: org.postgresql.Driver
+    # Note: Use DB_HOST and DB_PORT from your .env
+    url: jdbc:postgresql://${DB_HOST:db}:${DB_PORT:5432}/${POSTGRES_DB:edtech_db}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:postgres}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
   rabbitmq:
-    host: ${RABBITMQ_HOST}
-    port: ${RABBITMQ_PORT}
-    username: ${RABBITMQ_USER}
-    password: ${RABBITMQ_PASS}
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
   servlet:
     multipart:
-      max-file-size: 2GB
-      max-request-size: 2GB
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:2GB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:2GB}
+
 app:
-  jwt-secret: ${JWT_SECRET}
-  jwt-expiration-milliseconds: ${JWT_EXPIRATION_MS}
-  jwt-refresh-expiration-milliseconds: ${JWT_REFRESH_EXPIRATION_MS}
-  base-url: ${BASE_URL}
+  jwt-secret: ${JWT_SECRET:eW91ci1uZXctc3VwZXItbG9uZy1hbmQtc2VjdXJlLWJhc2U2NC1lbmNvZGVkLXNlY3JldC1rZXktZ29lcy1oZXJl}
+  jwt-expiration-milliseconds: ${JWT_EXPIRATION_MS:3600000}
+  jwt-refresh-expiration-milliseconds: ${JWT_REFRESH_EXPIRATION_MS:86400000}
+  base-url: ${BASE_URL:https://edtech.works}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://edtech.works}
+
 server:
   servlet:
-    context-path: /api/v1
-  port: ${API_PORT}
+    context-path: ${SERVER_SERVLET_CONTEXT_PATH:/api/v1}
+  port: ${API_PORT:8000}
+
 springdoc:
-  override-with-generic-response: false
+  override-with-generic-response: ${SPRINGDOC_OVERRIDE_WITH_GENERIC_RESPONSE:false}
+
 minio:
   api:
-    url: ${MINIO_API_URL}
+    url: ${MINIO_API_URL:http://minio:9000}
   access:
-    key: ${MINIO_ROOT_USER}
-    secret: ${MINIO_ROOT_PASSWORD}
+    key: ${MINIO_ROOT_USER:minioadmin}
+    secret: ${MINIO_ROOT_PASSWORD:minioadmin}
   bucket:
-    name: ${MINIO_BUCKET_NAME}
+    name: ${MINIO_BUCKET_NAME:edtech-content}
+
 janus:
   server:
-    url: ${JANUS_URL}
+    # Changed from JANUS_URL to match your .env's JANUS_SERVER_URL
+    url: ${JANUS_SERVER_URL:http://janus:8088/janus}
 
 rag:
   api:
-    url: http://agentic-rag:${AGENTIC_RAG_PORT}
+    # Changed to match RAG_API_URL in your .env
+    url: ${RAG_API_URL:http://agentic-rag:8001}
 
+# RabbitMQ Exchange/Queue Config
 rabbitmq:
   exchange:
-    name: ${RABBITMQ_EXCHANGE_NAME}
+    name: ${RABBITMQ_EXCHANGE_NAME:transcoding_exchange}
   queue:
-    name: ${RABBITMQ_QUEUE_NAME}
+    name: ${RABBITMQ_QUEUE_NAME:transcoding_queue}
   routing:
-    key: ${RABBITMQ_ROUTING_KEY}
+    key: ${RABBITMQ_ROUTING_KEY:video.transcoding.request}
   recording:
     merge:
       queue:
-        name: ${RABBITMQ_RECORDING_MERGE_QUEUE_NAME}
+        name: ${RABBITMQ_RECORDING_MERGE_QUEUE_NAME:recording_merge_queue}
       routing:
-        key: ${RABBITMQ_RECORDING_MERGE_ROUTING_KEY}
+        key: ${RABBITMQ_RECORDING_MERGE_ROUTING_KEY:recording.merge.request}
       dlq:
         routing:
-          key: ${RABBITMQ_RECORDING_MERGE_DLQ_ROUTING_KEY}
+          key: ${RABBITMQ_RECORDING_MERGE_DLQ_ROUTING_KEY:dlq.recording.merge.request}
   dlx:
-    name: ${RABBITMQ_DLX_NAME}
+    name: ${RABBITMQ_DLX_NAME:transcoding_exchange_dlx}
   dlq:
-    name: ${RABBITMQ_DLQ_NAME}
+    name: ${RABBITMQ_DLQ_NAME:transcoding_queue_dlq}
     routing:
-      key: ${RABBITMQ_DLQ_ROUTING_KEY}
+      key: ${RABBITMQ_DLQ_ROUTING_KEY:dlq.video.transcoding.request}
   transcription:
     queue:
-      name: ${RABBITMQ_TRANSCRIPTION_QUEUE_NAME}
+      name: ${RABBITMQ_TRANSCRIPTION_QUEUE_NAME:transcription_queue}
     dlx:
-      name: ${RABBITMQ_TRANSCRIPTION_DLX_NAME}
+      name: ${RABBITMQ_TRANSCRIPTION_DLX_NAME:transcription_exchange_dlx}
     dlq:
-      name: ${RABBITMQ_TRANSCRIPTION_DLQ_NAME}
+      name: ${RABBITMQ_TRANSCRIPTION_DLQ_NAME:transcription_queue_dlq}
       routing:
-        key: ${RABBITMQ_TRANSCRIPTION_DLQ_ROUTING_KEY}
+        key: ${RABBITMQ_TRANSCRIPTION_DLQ_ROUTING_KEY:dlq.video.transcoding.request}
