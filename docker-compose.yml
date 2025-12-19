@@ -94,11 +94,22 @@ services:
       - lms_network
     labels:
       - "traefik.enable=true"
+      # MinIO API Router
       - "traefik.http.routers.minio-api.rule=Host(`minio.edtech.works`)"
       - "traefik.http.routers.minio-api.entrypoints=websecure"
       - "traefik.http.routers.minio-api.tls.certresolver=myresolver"
       - "traefik.http.routers.minio-api.service=minio-api-svc"
       - "traefik.http.services.minio-api-svc.loadbalancer.server.port=9000"
+      # MinIO API CORS Middleware
+      - "traefik.http.routers.minio-api.middlewares=minio-cors"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolalloworiginlist=https://edtech.works"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.minio-cors.headers.addvaryheader=true"
+      
+      # MinIO Console Router
       - "traefik.http.routers.minio-console.rule=Host(`minio-console.edtech.works`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=myresolver"

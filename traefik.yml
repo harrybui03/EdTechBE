@@ -18,7 +18,7 @@ providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-    network: frontend
+    network: lms_network
 certificatesResolvers:
   letencrypt:
     acme:
