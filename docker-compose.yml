@@ -57,6 +57,10 @@ services:
       - TZ=Europe/Amsterdam
       - CF_API_EMAIL=${CF_API_EMAIL}
       - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+    depends_on:
+      - api-edtech
+      - janus
+      - minio
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/data # Stores acme.json for SSL certs
@@ -128,6 +132,10 @@ services:
       - .env
     networks:
       - lms_network
+    depends_on:
+      - db
+      - rabbitmq
+      - minio
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api-edtech.rule=Host(`api.edtech.works`)"
@@ -140,6 +148,10 @@ services:
       context: ./agentic-rag
       dockerfile: Dockerfile
     container_name: agentic-rag-api
+    depends_on:
+      - db
+      - rabbitmq
+      - minio
     volumes:
       - chroma-data:/app/.chroma
       - ./agentic-rag/knowledge-base:/app/knowledge-base:ro
@@ -153,6 +165,10 @@ services:
     build:
       context: ./transcode-video-worker
     container_name: transcode-video-worker
+    depends_on:
+      - db
+      - rabbitmq
+      - minio
     volumes:
       - ./.env:/app/.env
     networks:
