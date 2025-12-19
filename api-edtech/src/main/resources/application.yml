@@ -11,12 +11,6 @@ spring:
     port: ${SPRING_MAIL_PORT:587}
     username: ${SPRING_MAIL_USERNAME}
     password: ${SPRING_MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
-          starttls:
-            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
   datasource:
     # Note: Use DB_HOST and DB_PORT from your .env
     url: jdbc:postgresql://${DB_HOST:db}:${DB_PORT:5432}/${POSTGRES_DB:edtech_db}

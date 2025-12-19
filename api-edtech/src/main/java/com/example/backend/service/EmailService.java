@@ -30,6 +30,7 @@ public class EmailService {
         MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "UTF-8");
 
         helper.setTo(to);
+        helper.setFrom("support@edtech.works");
         helper.setSubject(subject);
         helper.setText(content, true);
         mailSender.send(mimeMessage);
