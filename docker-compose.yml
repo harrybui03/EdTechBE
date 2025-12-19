@@ -71,10 +71,8 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      # Automatic HTTP to HTTPS redirect
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      # Certificate Resolver for Name.com
       - --certificatesresolvers.myresolver.acme.email=${NAMECOM_USERNAME}
       - --certificatesresolvers.myresolver.acme.storage=/data/acme.json
       - --certificatesresolvers.myresolver.acme.dnschallenge=true
@@ -87,6 +85,8 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      # This environment variable helps MinIO handle internal CORS alongside Traefik
+      - MINIO_API_CORS_ALLOW_ORIGIN=*
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -94,22 +94,26 @@ services:
       - lms_network
     labels:
       - "traefik.enable=true"
-      # MinIO API Router
+      # --- MinIO API Router (Port 9000) ---
       - "traefik.http.routers.minio-api.rule=Host(`minio.edtech.works`)"
       - "traefik.http.routers.minio-api.entrypoints=websecure"
       - "traefik.http.routers.minio-api.tls.certresolver=myresolver"
       - "traefik.http.routers.minio-api.service=minio-api-svc"
       - "traefik.http.services.minio-api-svc.loadbalancer.server.port=9000"
-      # MinIO API CORS Middleware
+      - "traefik.http.services.minio-api-svc.loadbalancer.passhostheader=true"
+
+      # --- MinIO API CORS Middleware ---
       - "traefik.http.routers.minio-api.middlewares=minio-cors"
       - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE"
-      - "traefik.http.middlewares.minio-cors.headers.accesscontrolalloworiginlist=https://edtech.works"
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolalloworiginlist=*"
       - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowheaders=*"
       - "traefik.http.middlewares.minio-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.minio-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.minio-cors.headers.addvaryheader=true"
-      
-      # MinIO Console Router
+      # Crucial for PUT method success in browser
+      - "traefik.http.middlewares.minio-cors.headers.accesscontrolexposeheaders=ETag,Content-Length,x-amz-request-id,x-amz-id-2"
+
+      # --- MinIO Console Router (Port 9001) ---
       - "traefik.http.routers.minio-console.rule=Host(`minio-console.edtech.works`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=myresolver"
