@@ -42,6 +42,12 @@ public class FileUploadService {
     @Value("${minio.bucket.name}")
     private String bucketName;
 
+    @Value("${minio.api.url}")
+    private String minioApiUrl;
+
+    @Value("${minio.public-url}")
+    private String minioPublicUrl;
+
     public PresignedUrlResponse generatePresignedUploadUrl(String fileName,UUID entityID, UploadPurpose purpose) {
         String objectName = generateObjectName(fileName, purpose, entityID);
 
@@ -54,6 +60,10 @@ public class FileUploadService {
                             .expiry(15, TimeUnit.MINUTES) 
                             .build());
 
+            if (minioPublicUrl != null && !minioPublicUrl.isEmpty()) {
+                url = url.replace(minioApiUrl, minioPublicUrl);
+            }
+
             return new PresignedUrlResponse(url, objectName);
         } catch (Exception e) {
             log.error("Error generating presigned URL for object {}: {}", objectName, e.getMessage());
@@ -63,21 +73,23 @@ public class FileUploadService {
 
     public String generatePresignedGetUrl(String objectName) {
         try {
-            return minioClient.getPresignedObjectUrl(
+            String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
                             .object(objectName)
                             .expiry(1, TimeUnit.HOURS)
                             .build());
+
+            if (minioPublicUrl != null && !minioPublicUrl.isEmpty()) {
+                url = url.replace(minioApiUrl, minioPublicUrl);
+            }
+            return url;
         } catch (Exception e) {
             log.error("Error generating presigned GET URL for object {}: {}", objectName, e.getMessage());
             return null;
         }
     }
-
-
-
 
     @Transactional
     public void uploadAndQueueForTranscoding(TranscodeRequest transcodeRequest) {
