@@ -40,10 +40,13 @@ public class MinioConfig {
                 port = secure ? 443 : 9000;
             }
 
-            return MinioClient.builder()
+            var client = MinioClient.builder()
                     .endpoint(host, port, secure)
                     .credentials(accessKey, secretKey)
                     .build();
+            client.ignoreCertCheck();
+
+            return client;
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize Minio client with URL: '" + this.apiUrl + "'", e);
         }
