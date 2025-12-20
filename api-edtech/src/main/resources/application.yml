@@ -61,7 +61,7 @@ janus:
 rag:
   api:
     # Changed to match RAG_API_URL in your .env
-    url: ${RAG_API_URL:http://agentic-rag:8001}
+    url: ${RAG_API_URL:http://agentic-rag:8002}
 
 # RabbitMQ Exchange/Queue Config
 rabbitmq:

@@ -24,7 +24,7 @@ if %ERRORLEVEL% EQU 0 (
     
     echo.
     echo To run the container:
-    echo   docker run -p 8001:8001 --env-file .env %FULL_IMAGE_NAME%
+    echo   docker run -p 8002:8002 --env-file .env %FULL_IMAGE_NAME%
     echo.
     echo Or use docker-compose:
     echo   docker-compose up -d
