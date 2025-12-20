@@ -154,7 +154,7 @@ services:
     build:
       context: ./agentic-rag
       dockerfile: Dockerfile
-    container_name: agentic-rag-api
+    container_name: agentic-rag
     depends_on:
       - db
       - rabbitmq
