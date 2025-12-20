@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"os"
@@ -73,9 +74,18 @@ func Load(path string) (*Config, error) {
 		ExchangeName: os.Getenv("RABBITMQ_EXCHANGE_NAME"),
 	}
 
+	transport, err := minio.DefaultTransport(true)
+	if err != nil {
+		return nil, err
+	}
+	if transport.TLSClientConfig != nil {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
 	minioClient, err := minio.New(os.Getenv("MINIO_URL"), &minio.Options{
-		Creds:  credentials.NewStaticV4(os.Getenv("MINIO_ROOT_USER"), os.Getenv("MINIO_ROOT_PASSWORD"), ""),
-		Secure: false,
+		Creds:     credentials.NewStaticV4(os.Getenv("MINIO_ROOT_USER"), os.Getenv("MINIO_ROOT_PASSWORD"), ""),
+		Secure:    true,
+		Transport: transport,
 	})
 	if err != nil {
 		return nil, err

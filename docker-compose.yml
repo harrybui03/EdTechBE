@@ -169,6 +169,8 @@ services:
       - lms_network
 
   transcode-video-worker:
+    extra_hosts:
+      - "minio.edtech.works:host-gateway"
     build:
       context: ./transcode-video-worker
     container_name: transcode-video-worker
