@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import vn.payos.core.ClientOptions;
+import vn.payos.model.webhooks.WebhookData;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -184,26 +186,14 @@ public class PayOSIntegrationService {
 
     public String verifyWebhookAndGetCode(String rawBody, PayOSConfig config) {
         try {
-            // Parse webhook JSON
-            JsonNode rootNode = objectMapper.readTree(rawBody);
-            
-            // Extract signature from webhook
-            String signature = rootNode.has("signature") ? rootNode.get("signature").asText() : null;
-            
-            if (signature == null) {
-                log.warn("Webhook missing signature");
-                return "01"; // Invalid - no signature
-            }
-            
-            // Verify signature using the correct method (sorting keys of 'data' object)
-            if (!verifyWebhookSignature(signature, rawBody, config.getChecksumKey())) {
-                log.warn("Webhook signature verification failed");
-                return "01"; // Invalid signature
-            }
-            
-            // Extract code from webhook data
-            String code = rootNode.has("code") ? rootNode.get("code").asText() : "00";
-            return code;
+            var payOS = new PayOS(ClientOptions
+                    .builder()
+                    .clientId(config.getClientId())
+                    .apiKey(config.getApiKey())
+                    .checksumKey(config.getChecksumKey())
+                    .build());
+            WebhookData data =  payOS.webhooks().verify(rawBody);
+            return data.getCode();
         } catch (Exception e) {
             log.error("Webhook verification failed: {}", e.getMessage(), e);
             return "01";
