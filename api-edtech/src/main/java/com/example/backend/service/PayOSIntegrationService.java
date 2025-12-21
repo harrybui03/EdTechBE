@@ -4,6 +4,8 @@ import com.example.backend.entity.PayOSConfig;
 import com.example.backend.entity.Transaction;
 import vn.payos.PayOS;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +16,8 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -141,7 +144,37 @@ public class PayOSIntegrationService {
 
     public boolean verifyWebhookSignature(String signature, String body, String checksumKey) {
         try {
-            String expectedSignature = generateHmacSha256(body, checksumKey);
+            // Parse webhook JSON
+            JsonNode rootNode = objectMapper.readTree(body);
+            
+            // Extract data object
+            if (!rootNode.has("data")) {
+                log.warn("Webhook body missing 'data' field");
+                return false;
+            }
+            
+            JsonNode dataNode = rootNode.get("data");
+            
+            // Sort keys alphabetically
+            List<String> keys = new ArrayList<>();
+            Iterator<String> fieldNames = dataNode.fieldNames();
+            while (fieldNames.hasNext()) {
+                keys.add(fieldNames.next());
+            }
+            Collections.sort(keys);
+            
+            // Build query string
+            List<String> queryParams = new ArrayList<>();
+            for (String key : keys) {
+                JsonNode valueNode = dataNode.get(key);
+                String value = valueNode.isTextual() ? valueNode.asText() : valueNode.toString();
+                queryParams.add(key + "=" + value);
+            }
+            String dataToSign = String.join("&", queryParams);
+            
+            // Generate signature
+            String expectedSignature = generateHmacSha256(dataToSign, checksumKey);
+            
             return signature.equals(expectedSignature);
         } catch (Exception e) {
             log.error("Error verifying webhook signature: {}", e.getMessage(), e);
@@ -152,7 +185,7 @@ public class PayOSIntegrationService {
     public String verifyWebhookAndGetCode(String rawBody, PayOSConfig config) {
         try {
             // Parse webhook JSON
-            com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(rawBody);
+            JsonNode rootNode = objectMapper.readTree(rawBody);
             
             // Extract signature from webhook
             String signature = rootNode.has("signature") ? rootNode.get("signature").asText() : null;
@@ -162,14 +195,8 @@ public class PayOSIntegrationService {
                 return "01"; // Invalid - no signature
             }
             
-            // Remove signature from body for verification
-            com.fasterxml.jackson.databind.node.ObjectNode bodyWithoutSignature = rootNode.deepCopy();
-            bodyWithoutSignature.remove("signature");
-            String bodyForVerification = objectMapper.writeValueAsString(bodyWithoutSignature);
-            
-            // Verify signature
-            String expectedSignature = generateHmacSha256(bodyForVerification, config.getChecksumKey());
-            if (!signature.equals(expectedSignature)) {
+            // Verify signature using the correct method (sorting keys of 'data' object)
+            if (!verifyWebhookSignature(signature, rawBody, config.getChecksumKey())) {
                 log.warn("Webhook signature verification failed");
                 return "01"; // Invalid signature
             }
