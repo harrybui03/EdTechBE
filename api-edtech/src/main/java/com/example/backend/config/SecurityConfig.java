@@ -39,7 +39,8 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/swagger-ui.html",
             "/payments/webhook/**",
-            "/ws/**"
+            "/ws/**",
+            "/uploads/get-url"
     };
 
     @Bean
