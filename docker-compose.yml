@@ -90,23 +90,18 @@ services:
       - "traefik.http.routers.minio-console.service=minio-console-svc"
       - "traefik.http.services.minio-console-svc.loadbalancer.server.port=9001"
 
-  janus:
+   janus:
     image: canyan/janus-gateway:latest
     container_name: janus
     restart: unless-stopped
-    ports:
-      - "10000-10200:10000-10200/udp"
+    network_mode: host
     volumes:
+      - ./janus:/usr/local/etc/janus
       - ./janus-recordings:/tmp/janus-recordings
-    command: [ "/usr/local/bin/janus", "-S", "stun.l.google.com:19302" ]
-    networks:
-      - lms_network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.janus.rule=Host(`janus.edtech.works`)"
-      - "traefik.http.routers.janus.entrypoints=websecure"
-      - "traefik.http.routers.janus.tls.certresolver=letencrypt"
-      - "traefik.http.services.janus.loadbalancer.server.port=8088"
+    command: >
+      /usr/local/bin/janus
+      -C /usr/local/etc/janus
+      -S stun.l.google.com:19302
 
   api-edtech:
     build:

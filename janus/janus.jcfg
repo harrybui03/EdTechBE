@@ -1,0 +1,21 @@
+general: {
+  log_level = 4
+}
+
+nat: {
+  nat_1_1_mapping = "134.209.100.57"
+}
+
+media: {
+  min_port = 10000
+  max_port = 10200
+}
+
+admin: {
+  admin_http = false
+  admin_ws = false
+}
+
+ice: {
+  full_trickle = true
+}
