@@ -90,7 +90,7 @@ services:
       - "traefik.http.routers.minio-console.service=minio-console-svc"
       - "traefik.http.services.minio-console-svc.loadbalancer.server.port=9001"
 
-   janus:
+  janus:
     image: canyan/janus-gateway:latest
     container_name: janus
     restart: unless-stopped
