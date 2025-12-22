@@ -22,6 +22,8 @@ services:
       retries: 5
     networks:
       - lms_network
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
 
   db:
     image: postgres:13
@@ -189,3 +191,4 @@ volumes:
   minio_data:
   chroma-data:
   traefik_data:
+  rabbitmq_data:
