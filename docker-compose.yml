@@ -159,6 +159,21 @@ services:
       - lms_network
     restart: always
 
+  transcription-worker:
+    build:
+      context: ./transcript-video-worker
+      dockerfile: Dockerfile
+    container_name: transcription-worker
+    restart: always
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./transcript-video-worker/transcripts:/app/transcripts
+    networks:
+      - lms_network
+    depends_on:
+      - rabbitmq
+      - minio
+
 volumes:
   minio_data:
   chroma-data:

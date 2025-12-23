@@ -1,0 +1,34 @@
+app:
+  environment: develop
+server:
+  workers: 2
+rabbitmq:
+  host: localhost  # Dùng localhost khi chạy local
+  port: 5672
+  user: guest
+  pass: guest
+  exchange: transcoding_exchange  # Cùng exchange với transcode worker
+  routing_key: video.transcoding.request  # Cùng routing key với transcode worker
+  queue: transcription_queue  # Queue riêng cho transcription worker
+  dlx: transcription_exchange_dlx
+  dlq: transcription_queue_dlq
+database:
+  host: localhost  # Dùng localhost khi chạy local
+  port: 5432
+  dbname: postgres
+  user: postgres
+  password: postgres
+minio:
+  url: localhost:9000  # Dùng localhost khi chạy local
+  access_id: minioadmin
+  secret_access_key: minioadmin
+  bucket: edtech-content
+assemblyai:
+  api_key: b6262ec5f1ab4508920a6a1ff5eccc61
+  timeout: 300  # Timeout cho transcribe request (giây) - 5 phút
+  poll_timeout: 1800  # Timeout cho polling transcript status (giây) - 30 phút
+  poll_interval: 2  # Khoảng thời gian giữa các lần poll (giây)
+job_polling:
+  interval: 5  # Khoảng thời gian giữa các lần poll job status (giây)
+  timeout: 3600  # Timeout cho polling job status (giây) - 1 giờ
+
