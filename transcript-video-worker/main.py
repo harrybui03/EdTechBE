@@ -66,7 +66,7 @@ def setup_logger(env: str) -> None:
 
 
 def main() -> int:
-    cfg = load_config("../config.yaml")
+    cfg = load_config("config.yaml")
     setup_logger(cfg["app"]["environment"])
     
     logger = logging.getLogger("transcription.main")
@@ -103,5 +103,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
