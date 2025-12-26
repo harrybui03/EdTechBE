@@ -12,14 +12,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/rag")
+@RequestMapping
 @RequiredArgsConstructor
 public class RAGController {
 
     private final RAGService ragService;
     private final UserRepository userRepository;
 
-    @PostMapping("/ask")
+    @PostMapping({"/ask", "/rag/ask"})
     public ResponseEntity<AskRAGResponse> askQuestion(@RequestBody AskRAGRequest request) {
         // Set userId from authentication if not provided
         if (request.getUserId() == null || request.getUserId().isEmpty()) {
