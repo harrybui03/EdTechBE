@@ -619,6 +619,16 @@ class TranscriptionService:
                                             if translated_text:
                                                 self._logger.info(f"✅ Translation completed via Speech Understanding API")
                                                 break
+                                        else:
+                                            # Translation status = success nhưng chưa có translated_texts
+                                            # Nếu đã chờ quá 60 giây, có thể translated_texts không được trả về
+                                            # hoặc cần thời gian để xử lý async
+                                            if translate_elapsed > 60:
+                                                self._logger.warning(
+                                                    f"⚠️  Translation status is 'success' but translated_texts not available after {translate_elapsed:.0f}s. "
+                                                    f"Stopping polling - translation may be processed asynchronously."
+                                                )
+                                                break
                                 
                                 translate_poll_count += 1
                                 if translate_poll_count % self.POLL_LOG_INTERVAL_TRANSLATION == 0:

@@ -80,37 +80,38 @@ class TranscriptionConsumer:
         self._channel.queue_bind(queue=dlq, exchange=dlx, routing_key=f"dlq.{routing_key}")
         self._logger.debug(f"   ✓ DLQ declared and bound: {dlq}")
 
-        # Kiểm tra queue đã tồn tại chưa bằng passive declare
-        queue_exists = False
-        try:
-            self._channel.queue_declare(queue=queue, durable=True, passive=True)
-            queue_exists = True
-            self._logger.debug(f"   ✓ Queue already exists: {queue}")
-        except Exception:
-            # Queue chưa tồn tại, sẽ tạo mới
-            queue_exists = False
-        
-        # Tạo queue với arguments mới nếu chưa tồn tại
+        # Declare queue với arguments (idempotent - sẽ không lỗi nếu queue đã tồn tại với cùng config)
         args = {
             "x-dead-letter-exchange": dlx,
             "x-dead-letter-routing-key": f"dlq.{routing_key}",
         }
-        if not queue_exists:
+        try:
+            # Declare queue - sẽ tạo mới nếu chưa tồn tại, hoặc verify config nếu đã tồn tại
+            self._channel.queue_declare(queue=queue, durable=True, arguments=args)
+            self._logger.debug(f"   ✓ Queue declared: {queue}")
+        except pika.exceptions.ChannelClosedByBroker as e:
+            # Queue có thể đã tồn tại với arguments khác - cần xóa và tạo lại
+            self._logger.warning(
+                f"   ⚠️  Queue {queue} may exist with different arguments. "
+                f"Channel closed: {e}. Will try to recreate channel and declare queue."
+            )
+            # Tạo channel mới và thử lại
+            self._channel = self._connection.channel()
             try:
                 self._channel.queue_declare(queue=queue, durable=True, arguments=args)
-                self._logger.debug(f"   ✓ Queue declared with new arguments: {queue}")
-            except Exception as e:
-                self._logger.warning(
-                    f"   ⚠️  Failed to declare queue with arguments: {e}. "
-                    f"Queue may have been created by another process."
+                self._logger.debug(f"   ✓ Queue declared after channel recreation: {queue}")
+            except Exception as e2:
+                self._logger.error(
+                    f"   ❌ Failed to declare queue after channel recreation: {e2}. "
+                    f"Queue may need to be deleted manually if it has conflicting arguments."
                 )
-        else:
-            # Queue đã tồn tại - log warning về arguments có thể khác
-            self._logger.warning(
-                f"   ⚠️  Queue {queue} already exists. "
-                f"If it has different DLQ routing key, messages may go to old DLQ. "
-                f"Consider deleting and recreating the queue if needed."
+                raise
+        except Exception as e:
+            self._logger.error(
+                f"   ❌ Failed to declare queue: {e}. "
+                f"Queue may have been created by another process with different arguments."
             )
+            raise
         
         # Bind queue với exchange và routing key mới
         try:
@@ -320,5 +321,3 @@ class TranscriptionConsumer:
             pass
         self._channel = None
         self._connection = None
-
-
