@@ -3,9 +3,12 @@ Handle rejection of questions unrelated to courses/education.
 Provides polite response without unnecessary API calls.
 """
 
+import logging
 from typing import Any, Dict
 
 from graph.state import GraphState
+
+logger = logging.getLogger("agentic_rag.reject")
 
 
 def reject_unrelated_question(state: GraphState) -> Dict[str, Any]:
@@ -20,6 +23,7 @@ def reject_unrelated_question(state: GraphState) -> Dict[str, Any]:
         Dictionary containing rejection message and empty sources
     """
     print("---REJECT UNRELATED QUESTION---")
+    logger.info("---REJECT UNRELATED QUESTION---")
     question = state["question"]
     chat_history = state.get("chat_history", [])
     

@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List
 
 from langchain_core.documents import Document
@@ -5,6 +6,8 @@ from langchain_core.documents import Document
 from database import fetch_course_structure
 from graph.chains.generation import generation_chain, generation_chain_platform
 from graph.state import GraphState
+
+logger = logging.getLogger("agentic_rag.generate")
 
 SOURCE_KEYS = [
     "document_id",
@@ -230,6 +233,7 @@ def generate(state: GraphState) -> Dict[str, Any]:
         state (dict): A dictionary containing the generated response and the question
     """
     print("---GENERATE---")
+    logger.info("---GENERATE---")
     question = state["question"]
     documents = state["documents"]
     chat_history = state.get("chat_history", [])
@@ -241,11 +245,15 @@ def generate(state: GraphState) -> Dict[str, Any]:
     if state.get("generation") and regeneration_count == 0:
         # First regeneration attempt
         regeneration_count = 1
-        print(f"---REGENERATION ATTEMPT #1---")
+        msg = f"---REGENERATION ATTEMPT #1---"
+        print(msg)
+        logger.info(msg)
     elif regeneration_count > 0:
         # Subsequent regeneration attempts
         regeneration_count += 1
-        print(f"---REGENERATION ATTEMPT #{regeneration_count}---")
+        msg = f"---REGENERATION ATTEMPT #{regeneration_count}---"
+        print(msg)
+        logger.info(msg)
     
     # Build conversation context
     conversation_context = _build_conversation_context(chat_history)

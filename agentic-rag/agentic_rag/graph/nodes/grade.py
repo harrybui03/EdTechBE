@@ -1,8 +1,11 @@
+import logging
 from typing import Any, Dict
 
 from graph.chains.retrieval_grader import retrieval_grader
 from graph.chains.batch_retrieval_grader import batch_retrieval_grader
 from graph.state import GraphState
+
+logger = logging.getLogger("agentic_rag.grade")
 
 
 def grade_documents(state: GraphState) -> Dict[str, Any]:
@@ -18,6 +21,7 @@ def grade_documents(state: GraphState) -> Dict[str, Any]:
         state (dict): Filtered out irrelevant documents and updated use_web_search state.
     """
     print("---GRADE DOCUMENTS---")
+    logger.info("---GRADE DOCUMENTS---")
     question = state["question"]
     documents = state["documents"]
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_core.documents import Document
+
+try:
+    from minio import Minio
+    from minio.error import S3Error
+    MINIO_AVAILABLE = True
+except ImportError:
+    MINIO_AVAILABLE = False
 
 from database import (
     fetch_courses,
@@ -27,6 +35,21 @@ CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./.chroma")
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "700"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "120"))
 TRANSCRIPTS_DIR = os.getenv("TRANSCRIPTS_DIR", "../../transcription-worker/transcripts")
+
+# MinIO configuration
+# Support both new format (MINIO_ENDPOINT) and legacy format (MINIO_URL)
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT") or os.getenv("MINIO_URL")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY") or os.getenv("MINIO_ROOT_USER")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY") or os.getenv("MINIO_ROOT_PASSWORD")
+MINIO_BUCKET = os.getenv("MINIO_TRANSCRIPTS_BUCKET") or os.getenv("MINIO_BUCKET", "transcripts")
+MINIO_PREFIX = os.getenv("MINIO_TRANSCRIPTS_PREFIX", "lessons/")
+# MINIO_SECURE: check MINIO_API_URL for https, or MINIO_SECURE env var, or default to true
+_minio_api_url = os.getenv("MINIO_API_URL", "")
+if _minio_api_url.startswith("https://"):
+    MINIO_SECURE = True
+else:
+    MINIO_SECURE = os.getenv("MINIO_SECURE", "true").lower() == "true"
+TRANSCRIPTS_SOURCE = os.getenv("TRANSCRIPTS_SOURCE", "filesystem")  # "filesystem" or "minio"
 
 # Resolve knowledge-base directory relative to project root (not current working directory)
 # Default: ../knowledge-base (from agentic_rag/ directory) or ./knowledge-base (from project root)
@@ -181,8 +204,8 @@ def _build_lesson_documents(
     return documents
 
 
-def _load_transcript_files() -> List[Dict[str, Any]]:
-    """Load all transcript files from the transcripts directory"""
+def _load_transcript_files_from_filesystem() -> List[Dict[str, Any]]:
+    """Load all transcript files from the local filesystem"""
     transcripts_dir = Path(TRANSCRIPTS_DIR)
     # Resolve to absolute path for better error messages
     transcripts_dir = transcripts_dir.resolve()
@@ -216,8 +239,101 @@ def _load_transcript_files() -> List[Dict[str, Any]]:
             print(f"[INGEST] Failed to load transcript {transcript_file}: {e}")
             continue
     
-    print(f"[INGEST] Total transcripts loaded: {len(transcripts)}")
+    print(f"[INGEST] Total transcripts loaded from filesystem: {len(transcripts)}")
     return transcripts
+
+
+def _load_transcript_files_from_minio() -> List[Dict[str, Any]]:
+    """Load all transcript files from MinIO object storage"""
+    if not MINIO_AVAILABLE:
+        print("[INGEST] MinIO library not available. Install with: pip install minio")
+        return []
+    
+    if not all([MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY]):
+        print("[INGEST] MinIO configuration incomplete. Required: MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY")
+        return []
+    
+    try:
+        # Initialize MinIO client
+        client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_SECURE,
+        )
+        
+        # Check if bucket exists
+        if not client.bucket_exists(MINIO_BUCKET):
+            print(f"[INGEST] MinIO bucket '{MINIO_BUCKET}' does not exist")
+            return []
+        
+        transcripts = []
+        # List objects with prefix
+        prefix = MINIO_PREFIX.rstrip("/") + "/" if MINIO_PREFIX else ""
+        
+        objects = client.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)
+        
+        for obj in objects:
+            # Only process JSON files
+            if not obj.object_name.endswith(".json"):
+                continue
+            
+            try:
+                # Get object data
+                response = client.get_object(MINIO_BUCKET, obj.object_name)
+                data_bytes = response.read()
+                response.close()
+                response.release_conn()
+                
+                # Parse JSON
+                data = json.loads(data_bytes.decode("utf-8"))
+                
+                lesson_id = data.get("lessonId", "unknown")
+                text_preview = (data.get("translatedText") or data.get("text", ""))[:100]
+                duration = data.get("duration", 0)
+                language = data.get("language", "unknown")
+                segments_count = len(data.get("segments", []))
+                
+                print(
+                    f"[INGEST] Loaded transcript from MinIO | "
+                    f"object={obj.object_name} | "
+                    f"lessonId={lesson_id[:8] if len(str(lesson_id)) > 8 else lesson_id}... | "
+                    f"language={language} | "
+                    f"duration={duration:.1f}s | "
+                    f"segments={segments_count} | "
+                    f"preview={text_preview}..."
+                )
+                transcripts.append(data)
+            except json.JSONDecodeError as e:
+                print(f"[INGEST] Failed to parse JSON from MinIO object {obj.object_name}: {e}")
+                continue
+            except Exception as e:
+                print(f"[INGEST] Failed to load transcript from MinIO {obj.object_name}: {e}")
+                continue
+        
+        print(f"[INGEST] Total transcripts loaded from MinIO: {len(transcripts)}")
+        return transcripts
+        
+    except S3Error as e:
+        print(f"[INGEST] MinIO S3Error: {e}")
+        return []
+    except Exception as e:
+        print(f"[INGEST] MinIO connection error: {e}")
+        return []
+
+
+def _load_transcript_files() -> List[Dict[str, Any]]:
+    """Load transcript files from configured source (filesystem or MinIO)"""
+    source = TRANSCRIPTS_SOURCE.lower()
+    
+    if source == "minio":
+        return _load_transcript_files_from_minio()
+    elif source == "filesystem":
+        return _load_transcript_files_from_filesystem()
+    else:
+        print(f"[INGEST] Unknown TRANSCRIPTS_SOURCE: {source}. Use 'filesystem' or 'minio'")
+        # Fallback to filesystem
+        return _load_transcript_files_from_filesystem()
 
 
 def _build_transcript_documents(

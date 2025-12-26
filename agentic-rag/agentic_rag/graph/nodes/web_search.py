@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict
 
 from langchain_core.documents import Document
@@ -5,6 +6,8 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 
 from graph.state import GraphState
 from graph.nodes.web_search_validator import validate_web_search
+
+logger = logging.getLogger("agentic_rag.web_search")
 
 
 web_search_tool = TavilySearchResults(max_results=3)
@@ -22,6 +25,7 @@ def web_search(state: GraphState) -> Dict[str, Any]:
         state (dict): A dictionary containing the retrieved documents and the question
     """
     print("---WEB SEARCH---")
+    logger.info("---WEB SEARCH---")
     question = state["question"]
     documents = state["documents"] or []  # only relevant documents
     web_search_count = (state.get("web_search_count") or 0) + 1  # Increment web search counter
@@ -30,8 +34,12 @@ def web_search(state: GraphState) -> Dict[str, Any]:
     is_valid, reason = validate_web_search(question)
     
     if not is_valid:
-        print(f"---WEB SEARCH REJECTED: {reason}---")
-        print("---RETURNING WITHOUT WEB SEARCH---")
+        msg1 = f"---WEB SEARCH REJECTED: {reason}---"
+        msg2 = "---RETURNING WITHOUT WEB SEARCH---"
+        print(msg1)
+        print(msg2)
+        logger.info(msg1)
+        logger.info(msg2)
         # Return without web search - let existing documents handle the question
         return {
             "documents": documents,

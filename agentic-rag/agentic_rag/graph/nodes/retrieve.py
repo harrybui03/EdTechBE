@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List
 
 from langchain_core.documents import Document
@@ -5,6 +6,8 @@ from langchain_core.documents import Document
 from database import fetch_user_enrollments
 from ingestion import retriever
 from graph.state import GraphState
+
+logger = logging.getLogger("agentic_rag.retrieve")
 
 
 def _is_course_recommendation_question(question: str) -> bool:
@@ -90,6 +93,7 @@ def retrieve(state: GraphState) -> Dict[str, Any]:
         A dictionary containing the retrieved documents and the question
     """
     print("---RETRIEVE---")
+    logger.info("---RETRIEVE---")
     question = state["question"]
     user_id = state.get("user_id")
     lesson_id = state.get("lesson_id")
@@ -97,7 +101,9 @@ def retrieve(state: GraphState) -> Dict[str, Any]:
     
     # If lesson_id is provided, we only retrieve documents from that specific lesson
     if lesson_id:
-        print(f"---LESSON FILTER MODE: Only retrieving documents from lesson_id={lesson_id}---")
+        msg = f"---LESSON FILTER MODE: Only retrieving documents from lesson_id={lesson_id}---"
+        print(msg)
+        logger.info(msg)
 
     # Check if this is a platform usage question (excludes course recommendation)
     is_platform_question = _is_platform_question(question)

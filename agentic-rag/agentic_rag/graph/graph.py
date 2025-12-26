@@ -1,3 +1,5 @@
+import logging
+
 from dotenv import load_dotenv
 
 from langgraph.graph import END, StateGraph
@@ -16,6 +18,8 @@ from graph.nodes import (
     _is_unrelated_question_simple,
 )
 
+logger = logging.getLogger("agentic_rag.graph")
+
 
 # Only load .env file if not in Docker (override=False prevents overriding existing env vars)
 load_dotenv(override=False)
@@ -23,12 +27,15 @@ load_dotenv(override=False)
 
 def decide_to_generate(state):
     print("---ASSESS GRADED DOCUMENTS---")
+    logger.info("---ASSESS GRADED DOCUMENTS---")
 
     if state["use_web_search"]:
         print("---DECISION: NOT ALL DOCUMENTS ARE RELEVANT, GO TO WEB---")
+        logger.info("---DECISION: NOT ALL DOCUMENTS ARE RELEVANT, GO TO WEB---")
         return WEBSEARCH
     else:
         print("---DECISION: GENERATE---")
+        logger.info("---DECISION: GENERATE---")
         return GENERATE
 
 
@@ -39,6 +46,7 @@ def grade_generation_grounded_in_documents_and_question(state: GraphState):
     Prevents infinite loops by limiting regeneration attempts.
     """
     print("---CHECK HALLUCINATIONS AND ANSWER RELEVANCE (COMBINED)---")
+    logger.info("---CHECK HALLUCINATIONS AND ANSWER RELEVANCE (COMBINED)---")
 
     question = state["question"]
     documents = state["documents"]
@@ -48,22 +56,30 @@ def grade_generation_grounded_in_documents_and_question(state: GraphState):
     
     # Prevent infinite loops: if already tried web search multiple times, accept answer
     if web_search_count >= 2:
-        print(f"---DECISION: WEB SEARCH LIMIT REACHED ({web_search_count} attempts), ACCEPTING ANSWER---")
+        msg = f"---DECISION: WEB SEARCH LIMIT REACHED ({web_search_count} attempts), ACCEPTING ANSWER---"
+        print(msg)
+        logger.info(msg)
         return "useful"  # Accept the answer to prevent infinite loop
     
     # Prevent infinite loops: if no documents or already regenerated too many times, fallback
     if not documents:
-        print("---DECISION: NO DOCUMENTS AVAILABLE, FALLBACK TO WEB SEARCH---")
+        msg = "---DECISION: NO DOCUMENTS AVAILABLE, FALLBACK TO WEB SEARCH---"
+        print(msg)
+        logger.info(msg)
         return "not_useful"  # Fallback to web search
     
     # Increased limit and more aggressive fallback to prevent recursion
     if regeneration_count >= 3:
-        print(f"---DECISION: REGENERATION LIMIT REACHED ({regeneration_count} attempts), ACCEPTING ANSWER---")
+        msg = f"---DECISION: REGENERATION LIMIT REACHED ({regeneration_count} attempts), ACCEPTING ANSWER---"
+        print(msg)
+        logger.info(msg)
         return "useful"  # Accept the answer to prevent infinite loop
     
     # If already regenerated once and still not grounded, go to web search instead
     if regeneration_count >= 1 and not generation:
-        print(f"---DECISION: ALREADY REGENERATED ONCE ({regeneration_count} attempts), FALLBACK TO WEB SEARCH---")
+        msg = f"---DECISION: ALREADY REGENERATED ONCE ({regeneration_count} attempts), FALLBACK TO WEB SEARCH---"
+        print(msg)
+        logger.info(msg)
         return "not_useful"  # Fallback to web search instead of regenerating again
     
     documents_text = "\n\n-----\n\n".join([doc.page_content for doc in documents])
@@ -79,93 +95,138 @@ def grade_generation_grounded_in_documents_and_question(state: GraphState):
         is_grounded = result.is_grounded
         addresses_question = result.addresses_question
         
-        print(f"---COMBINED GRADING RESULT: grounded={is_grounded}, addresses_question={addresses_question}---")
-        print(f"---REASONING: {result.reasoning[:100]}...---")
+        msg1 = f"---COMBINED GRADING RESULT: grounded={is_grounded}, addresses_question={addresses_question}---"
+        msg2 = f"---REASONING: {result.reasoning[:100]}...---"
+        print(msg1)
+        print(msg2)
+        logger.info(msg1)
+        logger.info(msg2)
         
         if is_grounded and addresses_question:
-            print("---DECISION: ANSWER IS GROUNDED AND ADDRESSES QUESTION---")
+            msg = "---DECISION: ANSWER IS GROUNDED AND ADDRESSES QUESTION---"
+            print(msg)
+            logger.info(msg)
             return "useful"
         elif not is_grounded:
-            print("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS---")
+            msg = "---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS---"
+            print(msg)
+            logger.info(msg)
             # If no documents or already regenerated once, fallback to web search instead of regenerating
             if not documents or regeneration_count >= 1:
-                print("---DECISION: FALLBACK TO WEB SEARCH INSTEAD OF REGENERATING---")
+                msg2 = "---DECISION: FALLBACK TO WEB SEARCH INSTEAD OF REGENERATING---"
+                print(msg2)
+                logger.info(msg2)
                 return "not_useful"
             # Only allow regeneration if we haven't tried yet
             if regeneration_count == 0:
                 return "not_supported"
             else:
-                print("---DECISION: REGENERATION ALREADY ATTEMPTED, FALLBACK TO WEB SEARCH---")
+                msg2 = "---DECISION: REGENERATION ALREADY ATTEMPTED, FALLBACK TO WEB SEARCH---"
+                print(msg2)
+                logger.info(msg2)
                 return "not_useful"
         else:
-            print("---DECISION: ANSWER DOES NOT ADDRESS THE USER QUESTION---")
+            msg = "---DECISION: ANSWER DOES NOT ADDRESS THE USER QUESTION---"
+            print(msg)
+            logger.info(msg)
             # If already tried web search once, accept answer to prevent loop
             if web_search_count >= 1:
-                print(f"---DECISION: ALREADY TRIED WEB SEARCH ({web_search_count} attempts), ACCEPTING ANSWER---")
+                msg2 = f"---DECISION: ALREADY TRIED WEB SEARCH ({web_search_count} attempts), ACCEPTING ANSWER---"
+                print(msg2)
+                logger.info(msg2)
                 return "useful"
             return "not_useful"
             
     except Exception as e:
-        print(f"---COMBINED GRADER ERROR: {e}, FALLING BACK TO SEPARATE GRADERS---")
+        msg = f"---COMBINED GRADER ERROR: {e}, FALLING BACK TO SEPARATE GRADERS---"
+        print(msg)
+        logger.warning(msg, exc_info=True)
         # Fallback to separate graders on error
         score = hallucination_grader.invoke(
             {"documents": documents_text, "generation": generation}
         )
         if hallucination_grade := score.binary_score:
-            print("---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---")
-            print("---CHECK ANSWER---")
+            msg1 = "---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---"
+            msg2 = "---CHECK ANSWER---"
+            print(msg1)
+            print(msg2)
+            logger.info(msg1)
+            logger.info(msg2)
             score = answer_grader.invoke({"question": question, "generation": generation})
             if answer_grade := score.binary_score:
-                print("---DECISION: ANSWER ADDRESSES THE USER QUESTION---")
+                msg = "---DECISION: ANSWER ADDRESSES THE USER QUESTION---"
+                print(msg)
+                logger.info(msg)
                 return "useful"
             else:
-                print("---DECISION: ANSWER DOES NOT ADDRESS THE USER QUESTION---")
+                msg = "---DECISION: ANSWER DOES NOT ADDRESS THE USER QUESTION---"
+                print(msg)
+                logger.info(msg)
                 return "not_useful"
         else:
-            print("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS---")
+            msg = "---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS---"
+            print(msg)
+            logger.info(msg)
             # If no documents or already regenerated, fallback to web search
             if not documents or regeneration_count >= 1:
-                print("---DECISION: FALLBACK TO WEB SEARCH INSTEAD OF REGENERATING---")
+                msg2 = "---DECISION: FALLBACK TO WEB SEARCH INSTEAD OF REGENERATING---"
+                print(msg2)
+                logger.info(msg2)
                 return "not_useful"
             return "not_supported"
 
 
 def route_question(state: GraphState):
     print("---ROUTE QUESTION---")
+    logger.info("---ROUTE QUESTION---")
     question = state["question"]
     
     # Check greeting/chit-chat FIRST (avoid unnecessary resource consumption)
     if _is_greeting(question):
-        print("---DECISION: ROUTE QUESTION TO GREETING (CHIT-CHAT)---")
+        msg = "---DECISION: ROUTE QUESTION TO GREETING (CHIT-CHAT)---"
+        print(msg)
+        logger.info(msg)
         return GREETING
     
     # Early rejection: Check if question is obviously unrelated (fast pattern check)
     if _is_unrelated_question_simple(question):
-        print("---DECISION: QUESTION IS UNRELATED TO COURSES (PATTERN CHECK)---")
+        msg = "---DECISION: QUESTION IS UNRELATED TO COURSES (PATTERN CHECK)---"
+        print(msg)
+        logger.info(msg)
         return REJECT
 
     try:
         source = question_router.invoke({"question": question})
     except Exception as e:
-        print(f"---ERROR: ROUTER FAILED ({type(e).__name__}: {e}), DEFAULTING TO RAG---")
+        msg = f"---ERROR: ROUTER FAILED ({type(e).__name__}: {e}), DEFAULTING TO RAG---"
+        print(msg)
+        logger.warning(msg, exc_info=True)
         return RETRIEVE
 
     # Check if source is None, default to vectorstore
     if source is None:
-        print("---WARNING: ROUTER RETURNED NONE, DEFAULTING TO RAG---")
+        msg = "---WARNING: ROUTER RETURNED NONE, DEFAULTING TO RAG---"
+        print(msg)
+        logger.warning(msg)
         return RETRIEVE
 
     if source.datasource == WEBSEARCH:
         # Additional validation before allowing web search
         # This provides a second layer of protection
-        print("---DECISION: ROUTER SUGGESTED WEB SEARCH, WILL VALIDATE IN WEB_SEARCH NODE---")
+        msg = "---DECISION: ROUTER SUGGESTED WEB SEARCH, WILL VALIDATE IN WEB_SEARCH NODE---"
+        print(msg)
+        logger.info(msg)
         return WEBSEARCH
     elif source.datasource == "vectorstore":
-        print("---DECISION: ROUTE QUESTION TO RAG---")
+        msg = "---DECISION: ROUTE QUESTION TO RAG---"
+        print(msg)
+        logger.info(msg)
         return RETRIEVE
     
     # Fallback: if datasource is not web_search or vectorstore
-    print("---WARNING: UNKNOWN DATASOURCE, DEFAULTING TO RAG---")
+    msg = "---WARNING: UNKNOWN DATASOURCE, DEFAULTING TO RAG---"
+    print(msg)
+    logger.warning(msg)
     return RETRIEVE
 
 
