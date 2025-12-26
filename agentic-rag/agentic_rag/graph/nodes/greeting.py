@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -5,6 +6,8 @@ from langchain_core.output_parsers import StrOutputParser
 
 from graph.state import GraphState
 from graph.chains.llm_config import create_llm, rate_limit_delay
+
+logger = logging.getLogger("agentic_rag.greeting")
 
 
 def _is_greeting(question: str) -> bool:
@@ -72,6 +75,7 @@ def greeting(state: GraphState) -> Dict[str, Any]:
         Dictionary containing generation and necessary information
     """
     print("---GREETING/CHIT-CHAT---")
+    logger.info("---GREETING/CHIT-CHAT---")
     question = state["question"]
     chat_history = state.get("chat_history", [])
     

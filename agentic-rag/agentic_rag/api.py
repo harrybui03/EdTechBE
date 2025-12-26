@@ -4,10 +4,11 @@ Provides REST API endpoints for the frontend to interact with the RAG system.
 """
 
 import io
+import logging
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -32,6 +33,17 @@ except ImportError:
 # Only load .env file if not in Docker (override=False prevents overriding existing env vars)
 # In Docker, environment variables are set by docker-compose.yml
 load_dotenv(override=False)
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("agentic_rag.api")
 
 # Initialize FastAPI app
 api_app = FastAPI(
@@ -65,10 +77,12 @@ class ChatMessage(BaseModel):
 
 class AskRequest(BaseModel):
     """Request model for asking a question"""
+    
+    model_config = ConfigDict(populate_by_name=True)  # Allow both snake_case and camelCase
 
     question: str = Field(..., description="The question to ask", min_length=1)
     user_id: Optional[str] = Field(None, description="Optional user ID for permission checks")
-    lesson_id: Optional[str] = Field(None, description="Optional lesson ID to filter documents to specific lesson")
+    lesson_id: Optional[str] = Field(None, alias="lessonId", description="Optional lesson ID to filter documents to specific lesson")
     chat_history: Optional[List[ChatMessage]] = Field(
         None, description="Previous conversation history"
     )
@@ -143,6 +157,9 @@ async def ask_question(request: AskRequest) -> AskResponse:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
+        logger.info(f"[ASK] Received question: {request.question[:100]}...")
+        logger.info(f"[ASK] User ID: {request.user_id}, Lesson ID: {request.lesson_id}")
+        
         # Prepare payload for the graph
         payload = {"question": request.question.strip()}
         
@@ -157,18 +174,22 @@ async def ask_question(request: AskRequest) -> AskResponse:
             payload["chat_history"] = [
                 (msg.question, msg.answer) for msg in request.chat_history
             ]
+            logger.info(f"[ASK] Chat history: {len(request.chat_history)} messages")
 
         # Capture stdout for trace output
         buf = io.StringIO()
         with redirect_stdout(buf):
             # Increase recursion limit to handle complex flows
             # Also add config to prevent infinite loops
+            logger.info("[ASK] Invoking RAG graph...")
             result = app.invoke(
                 input=payload,
                 config={"recursion_limit": 30}  # Increased from default 25
             )
+            logger.info("[ASK] RAG graph execution completed")
 
         trace = buf.getvalue()
+        logger.info(f"[ASK] Trace captured: {len(trace)} characters")
         answer = result.get("generation", str(result))
         sources_raw = result.get("sources", [])
         updated_history_raw = result.get("chat_history", [])
@@ -187,6 +208,7 @@ async def ask_question(request: AskRequest) -> AskResponse:
         for q, a in updated_history_raw:
             chat_history.append(ChatMessage(question=q, answer=a))
 
+        logger.info(f"[ASK] Response prepared: answer length={len(answer)}, sources={len(sources)}")
         return AskResponse(
             answer=answer,
             trace=trace,
@@ -195,6 +217,7 @@ async def ask_question(request: AskRequest) -> AskResponse:
         )
 
     except Exception as e:
+        logger.error(f"[ASK] Error processing question: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing question: {str(e)}",
@@ -209,6 +232,7 @@ class AskV1Request(BaseModel):
 
     question: str = Field(..., description="The question to ask", min_length=1)
     user_id: str = Field(..., alias="userId", description="User ID")
+    lesson_id: Optional[str] = Field(None, alias="lessonId", description="Optional lesson ID to filter documents to specific lesson")
     chat_history: Optional[List[ChatMessage]] = Field(
         default=None, alias="chatHistory", description="Previous conversation history (only last 5 will be used)"
     )
@@ -221,12 +245,29 @@ class CourseSource(BaseModel):
     slug: str = Field(..., description="Course slug (link to course)")
 
 
+class LessonSource(BaseModel):
+    """
+    Source lesson metadata for /api/v1/ask response when lesson_id is provided.
+    
+    NOTE: The primary content of a lesson is the video transcript.
+    This model prioritizes transcript documents over lesson metadata documents.
+    """
+
+    lesson_id: str = Field(..., description="Lesson ID")
+    lesson_title: Optional[str] = Field(None, description="Lesson title")
+    course_id: Optional[str] = Field(None, description="Course ID")
+    course_title: Optional[str] = Field(None, description="Course title")
+    course_slug: Optional[str] = Field(None, description="Course slug (link to course)")
+    doc_type: str = Field(..., description="Document type: 'transcript' (primary content) or 'lesson' (metadata fallback if no transcript)")
+
+
 class AskV1Response(BaseModel):
     """Response model for /api/v1/ask endpoint"""
 
     answer: str = Field(..., description="The generated answer")
-    sources: List[CourseSource] = Field(
-        default_factory=list, description="Source courses (only courses, not knowledge or lessons)"
+    sources: List[Union[CourseSource, LessonSource]] = Field(
+        default_factory=list, 
+        description="Source courses (when no lesson_id) or lesson sources (when lesson_id is provided)"
     )
 
 
@@ -237,17 +278,19 @@ async def ask_v1(request: AskV1Request) -> AskV1Response:
     
     This endpoint processes the question through the RAG pipeline and returns:
     - The generated answer
-    - Source courses (only courses, filtered from all sources)
+    - Source courses (when no lesson_id) or lesson sources (when lesson_id is provided)
     
     Only the last 5 questions from chat_history will be used.
-    Sources are filtered to only include courses (doc_type == "course_overview"),
-    and only return title and slug.
+    
+    Source filtering logic:
+    - If lesson_id is provided: Returns sources from that specific lesson (prioritizes "transcript" as main content, falls back to "lesson" if no transcript)
+    - If lesson_id is not provided: Returns course sources (doc_type == "course_overview")
     
     Args:
-        request: AskV1Request containing question, user_id, and optional chat_history
+        request: AskV1Request containing question, user_id, optional lesson_id and chat_history
         
     Returns:
-        AskV1Response with answer and course sources
+        AskV1Response with answer and sources (courses or lessons depending on lesson_id)
         
     Raises:
         HTTPException: If question is empty or processing fails
@@ -256,11 +299,17 @@ async def ask_v1(request: AskV1Request) -> AskV1Response:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
+        logger.info(f"[ASK_V1] Received question: {request.question[:100]}...")
+        logger.info(f"[ASK_V1] User ID: {request.user_id}, Lesson ID: {request.lesson_id}")
+        
         # Prepare payload for the graph
         payload = {"question": request.question.strip()}
         
         if request.user_id and request.user_id.strip():
             payload["user_id"] = request.user_id.strip()
+        
+        if request.lesson_id and request.lesson_id.strip():
+            payload["lesson_id"] = request.lesson_id.strip()
         
         # Only take last 5 questions from chat_history
         # Filter out messages with null question or answer
@@ -271,59 +320,137 @@ async def ask_v1(request: AskV1Request) -> AskV1Response:
                 for msg in last_5_history 
                 if msg.question and msg.answer  # Skip null/empty messages
             ]
+            logger.info(f"[ASK_V1] Chat history: {len(payload.get('chat_history', []))} messages (last 5)")
 
         # Capture stdout for trace output (but don't include in response)
+        # Trace will be logged to console via print statements in graph nodes
         buf = io.StringIO()
         with redirect_stdout(buf):
+            logger.info("[ASK_V1] Invoking RAG graph...")
             result = app.invoke(
                 input=payload,
                 config={"recursion_limit": 30}
             )
+            logger.info("[ASK_V1] RAG graph execution completed")
+        
+        # Log trace to console for debugging (even though not in response)
+        trace = buf.getvalue()
+        if trace:
+            logger.info(f"[ASK_V1] Agentic trace:\n{trace}")
 
         answer = result.get("generation", str(result))
         sources_raw = result.get("sources", [])
+        lesson_id = request.lesson_id.strip() if request.lesson_id and request.lesson_id.strip() else None
 
-        # Filter sources: only courses (doc_type == "course_overview")
-        # Collect unique course_ids
-        course_ids: Set[str] = set()
-        course_sources_map: Dict[str, Dict[str, str]] = {}
-        
-        for source_raw in sources_raw:
-            if isinstance(source_raw, dict):
-                doc_type = source_raw.get("doc_type")
-                # Only include course_overview documents
-                if doc_type == "course_overview":
-                    course_id = source_raw.get("course_id")
-                    course_title = source_raw.get("course_title")
-                    
-                    if course_id and course_title:
-                        course_id_str = str(course_id)
-                        course_ids.add(course_id_str)
-                        # Store course info, will update with slug later
-                        if course_id_str not in course_sources_map:
-                            course_sources_map[course_id_str] = {
-                                "title": course_title
-                            }
-        
-        # Fetch slugs for all course_ids
-        course_slugs = fetch_courses_slugs(list(course_ids))
-        
-        # Build sources list with title and slug
         sources = []
-        for course_id_str, course_info in course_sources_map.items():
-            slug = course_slugs.get(course_id_str)
-            if slug:  # Only include if slug exists
-                sources.append(CourseSource(
-                    title=course_info["title"],
-                    slug=slug
+        
+        if lesson_id:
+            # When lesson_id is provided: Return lesson sources
+            # NOTE: Transcript is the PRIMARY content of a lesson (video transcript)
+            # We prioritize transcript over lesson document metadata
+            lesson_sources_map: Dict[str, Dict[str, any]] = {}
+            
+            # Collect lesson documents - prioritize transcript (main content) over lesson metadata
+            for source_raw in sources_raw:
+                if isinstance(source_raw, dict):
+                    doc_type = source_raw.get("doc_type")
+                    doc_lesson_id = source_raw.get("lesson_id")
+                    
+                    # Only include documents from the specified lesson
+                    if doc_lesson_id == lesson_id and doc_type in ["lesson", "transcript"]:
+                        lesson_id_str = str(doc_lesson_id)
+                        course_id = source_raw.get("course_id")
+                        course_title = source_raw.get("course_title")
+                        lesson_title = source_raw.get("lesson_title")
+                        
+                        # Priority: transcript (main content) > lesson (metadata fallback)
+                        if lesson_id_str not in lesson_sources_map:
+                            # First document found - store it
+                            lesson_sources_map[lesson_id_str] = {
+                                "lesson_id": lesson_id_str,
+                                "lesson_title": lesson_title,
+                                "course_id": str(course_id) if course_id else None,
+                                "course_title": course_title,
+                                "doc_type": doc_type
+                            }
+                        elif doc_type == "transcript" and lesson_sources_map[lesson_id_str]["doc_type"] == "lesson":
+                            # Replace lesson metadata with transcript (transcript is main content)
+                            lesson_sources_map[lesson_id_str] = {
+                                "lesson_id": lesson_id_str,
+                                "lesson_title": lesson_title,
+                                "course_id": str(course_id) if course_id else None,
+                                "course_title": course_title,
+                                "doc_type": "transcript"
+                            }
+            
+            # Fetch course slugs for lesson sources
+            course_ids_for_slugs = [
+                info["course_id"] 
+                for info in lesson_sources_map.values() 
+                if info.get("course_id")
+            ]
+            if course_ids_for_slugs:
+                course_slugs = fetch_courses_slugs(course_ids_for_slugs)
+                for lesson_id_str, lesson_info in lesson_sources_map.items():
+                    course_id_str = lesson_info.get("course_id")
+                    if course_id_str:
+                        lesson_info["course_slug"] = course_slugs.get(course_id_str)
+            
+            # Build sources list with LessonSource
+            for lesson_id_str, lesson_info in lesson_sources_map.items():
+                sources.append(LessonSource(
+                    lesson_id=lesson_info["lesson_id"],
+                    lesson_title=lesson_info.get("lesson_title"),
+                    course_id=lesson_info.get("course_id"),
+                    course_title=lesson_info.get("course_title"),
+                    course_slug=lesson_info.get("course_slug"),
+                    doc_type=lesson_info["doc_type"]
                 ))
-
+            
+            logger.info(f"[ASK_V1] Response prepared: answer length={len(answer)}, lesson sources={len(sources)} (lesson_id={lesson_id})")
+        else:
+            # When no lesson_id: Return course sources (course_overview documents)
+            course_ids: Set[str] = set()
+            course_sources_map: Dict[str, Dict[str, str]] = {}
+            
+            for source_raw in sources_raw:
+                if isinstance(source_raw, dict):
+                    doc_type = source_raw.get("doc_type")
+                    # Only include course_overview documents
+                    if doc_type == "course_overview":
+                        course_id = source_raw.get("course_id")
+                        course_title = source_raw.get("course_title")
+                        
+                        if course_id and course_title:
+                            course_id_str = str(course_id)
+                            course_ids.add(course_id_str)
+                            # Store course info, will update with slug later
+                            if course_id_str not in course_sources_map:
+                                course_sources_map[course_id_str] = {
+                                    "title": course_title
+                                }
+            
+            # Fetch slugs for all course_ids
+            if course_ids:
+                course_slugs = fetch_courses_slugs(list(course_ids))
+                
+                # Build sources list with title and slug
+                for course_id_str, course_info in course_sources_map.items():
+                    slug = course_slugs.get(course_id_str)
+                    if slug:  # Only include if slug exists
+                        sources.append(CourseSource(
+                            title=course_info["title"],
+                            slug=slug
+                        ))
+            
+            logger.info(f"[ASK_V1] Response prepared: answer length={len(answer)}, course sources={len(sources)}")
         return AskV1Response(
             answer=answer,
             sources=sources,
         )
 
     except Exception as e:
+        logger.error(f"[ASK_V1] Error processing question: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing question: {str(e)}",
