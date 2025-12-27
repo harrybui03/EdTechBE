@@ -192,6 +192,25 @@ def _format_roadmap(course_structure: Dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _detect_language(text: str) -> str:
+    """
+    Simple language detection: check if text contains Vietnamese characters.
+    Returns 'vi' for Vietnamese, 'en' for English (default).
+    """
+    vietnamese_chars = set('àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ')
+    text_lower = text.lower()
+    # Check if text contains Vietnamese characters
+    if any(char in vietnamese_chars for char in text_lower):
+        return 'vi'
+    # Check for common Vietnamese words
+    vietnamese_words = ['tôi', 'bạn', 'của', 'là', 'và', 'với', 'cho', 'được', 'có', 'không', 'nào', 'gì', 'sao', 'thế']
+    words = text_lower.split()
+    vietnamese_word_count = sum(1 for word in words if word in vietnamese_words)
+    if vietnamese_word_count >= 2:  # At least 2 Vietnamese words
+        return 'vi'
+    return 'en'
+
+
 def _build_conversation_context(chat_history: List[tuple[str, str]] | None) -> str:
     """Build conversation context from chat history"""
     if not chat_history:
@@ -319,37 +338,86 @@ def generate(state: GraphState) -> Dict[str, Any]:
         # Regular question
         context = _build_context(documents)
         
-        # Check if this is a platform question with primarily knowledge-base documents
-        # Use concise prompt for platform/knowledge-base questions
-        is_platform_question = state.get("is_platform_question", False)
-        kb_doc_count = sum(1 for doc in documents if (doc.metadata or {}).get("doc_type") == "knowledge_base")
-        is_mostly_kb = kb_doc_count > 0 and kb_doc_count >= len(documents) * 0.5  # At least 50% KB docs
+        # Check if context is empty (no documents or empty context string)
+        has_empty_context = not documents or not context.strip()
         
-        if is_platform_question and is_mostly_kb:
-            print("---PLATFORM QUESTION WITH KB DOCS - USING CONCISE PROMPT---")
-            # For platform questions with KB docs, use concise prompt (like knowledge base docs)
-            if conversation_context:
-                enhanced_context = f"{conversation_context}\n\n## RETRIEVED DOCUMENTS:\n\n{context}"
-            else:
-                enhanced_context = context
-            generation = generation_chain_platform.invoke({"context": enhanced_context, "question": question})
-        else:
-            # Regular generation with comprehensive prompt
-            # Add conversation context if available - place it BEFORE documents for better context understanding
-            if conversation_context:
-                # Put conversation history first so LLM sees it first
-                enhanced_context = f"{conversation_context}\n\n## RETRIEVED DOCUMENTS:\n\n{context}"
-                # Add instruction to use conversation history
-                enhanced_context = (
-                    "INSTRUCTIONS: The user's current question may be a follow-up to previous questions. "
-                    "Please read the CONVERSATION HISTORY above to understand the context. "
-                    "Then answer the current question using both the conversation history and the retrieved documents below.\n\n"
-                    + enhanced_context
-                )
-            else:
-                enhanced_context = context
+        if has_empty_context:
+            print("---NO CONTEXT AVAILABLE - PROVIDING NATURAL RESPONSE---")
+            # Provide a natural, helpful response when no context is available
+            # Use original_language from state if available, otherwise detect
+            language = state.get("original_language") or _detect_language(question)
+            is_platform_question = state.get("is_platform_question", False)
             
-            generation = generation_chain.invoke({"context": enhanced_context, "question": question})
+            if is_platform_question:
+                # For platform questions, suggest checking knowledge base or contacting support
+                if language == 'vi':
+                    generation = (
+                        f"Tôi hiểu bạn đang hỏi về {question.lower()}. "
+                        "Hiện tại tôi chưa có thông tin chi tiết về vấn đề này trong cơ sở kiến thức. "
+                        "Bạn có thể thử:\n"
+                        "- Kiểm tra lại hướng dẫn sử dụng trên nền tảng EdTech\n"
+                        "- Liên hệ với bộ phận hỗ trợ để được trợ giúp chi tiết hơn\n"
+                        "- Hoặc đặt câu hỏi cụ thể hơn để tôi có thể tìm kiếm thông tin liên quan"
+                    )
+                else:
+                    generation = (
+                        f"I understand you're asking about {question.lower()}. "
+                        "I don't currently have detailed information about this in the knowledge base. "
+                        "You could try:\n"
+                        "- Checking the user guide on the EdTech platform\n"
+                        "- Contacting support for more detailed assistance\n"
+                        "- Or asking a more specific question so I can search for related information"
+                    )
+            else:
+                # For course content questions, suggest checking course materials or asking differently
+                if language == 'vi':
+                    generation = (
+                        f"Tôi chưa tìm thấy thông tin cụ thể về '{question}' trong các tài liệu khóa học hiện có. "
+                        "Bạn có thể thử:\n"
+                        "- Kiểm tra lại nội dung khóa học bạn đang học\n"
+                        "- Đặt câu hỏi cụ thể hơn hoặc sử dụng từ khóa khác\n"
+                        "- Hoặc cho tôi biết bạn đang học khóa học nào để tôi có thể tìm kiếm chính xác hơn"
+                    )
+                else:
+                    generation = (
+                        f"I couldn't find specific information about '{question}' in the available course materials. "
+                        "You could try:\n"
+                        "- Checking the course content you're currently studying\n"
+                        "- Asking a more specific question or using different keywords\n"
+                        "- Or letting me know which course you're taking so I can search more accurately"
+                    )
+        else:
+            # Check if this is a platform question with primarily knowledge-base documents
+            # Use concise prompt for platform/knowledge-base questions
+            is_platform_question = state.get("is_platform_question", False)
+            kb_doc_count = sum(1 for doc in documents if (doc.metadata or {}).get("doc_type") == "knowledge_base")
+            is_mostly_kb = kb_doc_count > 0 and kb_doc_count >= len(documents) * 0.5  # At least 50% KB docs
+            
+            if is_platform_question and is_mostly_kb:
+                print("---PLATFORM QUESTION WITH KB DOCS - USING CONCISE PROMPT---")
+                # For platform questions with KB docs, use concise prompt (like knowledge base docs)
+                if conversation_context:
+                    enhanced_context = f"{conversation_context}\n\n## RETRIEVED DOCUMENTS:\n\n{context}"
+                else:
+                    enhanced_context = context
+                generation = generation_chain_platform.invoke({"context": enhanced_context, "question": question})
+            else:
+                # Regular generation with comprehensive prompt
+                # Add conversation context if available - place it BEFORE documents for better context understanding
+                if conversation_context:
+                    # Put conversation history first so LLM sees it first
+                    enhanced_context = f"{conversation_context}\n\n## RETRIEVED DOCUMENTS:\n\n{context}"
+                    # Add instruction to use conversation history
+                    enhanced_context = (
+                        "INSTRUCTIONS: The user's current question may be a follow-up to previous questions. "
+                        "Please read the CONVERSATION HISTORY above to understand the context. "
+                        "Then answer the current question using both the conversation history and the retrieved documents below.\n\n"
+                        + enhanced_context
+                    )
+                else:
+                    enhanced_context = context
+                
+                generation = generation_chain.invoke({"context": enhanced_context, "question": question})
     
     sources = _extract_sources(documents)
     
@@ -368,4 +436,5 @@ def generate(state: GraphState) -> Dict[str, Any]:
         "chat_history": updated_history,
         "regeneration_count": regeneration_count,
         "web_search_count": state.get("web_search_count") or 0,  # Preserve web search count
+        "original_language": state.get("original_language"),  # Preserve original language
     }

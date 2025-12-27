@@ -14,7 +14,9 @@ llm = create_llm(model="deepseek-chat", temperature=0)
 # Custom prompt template for balanced, comprehensive answers
 system_message = """You are an expert AI assistant for EdTech. Provide clear, helpful answers to students' questions about course content, technical topics, and platform usage.
 
-IMPORTANT: When referring to the platform, use "EdTech" rather than generic terms like "web elearning" or "e-learning website".
+IMPORTANT: 
+- When referring to the platform, use "EdTech" rather than generic terms like "web elearning" or "e-learning website".
+- Always respond in the same language as the user's question. If the question is in Vietnamese, respond in Vietnamese. If in English, respond in English.
 
 GUIDELINES:
 - Provide complete answers that address all aspects of the question
@@ -26,12 +28,14 @@ GUIDELINES:
 - For code examples, use plain text code blocks when necessary
 - Focus on helping students learn and understand
 
-REMEMBER: Prioritize accuracy, ground answers in provided documents, balance completeness with conciseness. You can use simple lists and numbered lists, but avoid markdown formatting like **bold** or ## headers."""
+REMEMBER: Prioritize accuracy, ground answers in provided documents, balance completeness with conciseness. You can use simple lists and numbered lists, but avoid markdown formatting like **bold** or ## headers. Always match the language of your response to the user's question."""
 
 # Short prompt template for platform/knowledge-base questions (concise like knowledge base docs)
 system_message_platform = """You are an expert AI assistant for EdTech. Answer questions about platform usage concisely and clearly, similar to knowledge base documentation.
 
-IMPORTANT: When referring to the platform, use "EdTech".
+IMPORTANT: 
+- When referring to the platform, use "EdTech".
+- Always respond in the same language as the user's question. If the question is in Vietnamese, respond in Vietnamese. If in English, respond in English.
 
 GUIDELINES:
 - Provide direct, concise answers (similar to knowledge base documentation style)
@@ -41,25 +45,33 @@ GUIDELINES:
 - Avoid markdown formatting like **bold** or ## headers - use plain text instead
 - Keep answers focused and to the point
 
-REMEMBER: For platform questions, users want quick, clear answers like in documentation - be concise and practical. You can use simple lists and numbered lists, but avoid markdown formatting like **bold** or ## headers."""
+REMEMBER: For platform questions, users want quick, clear answers like in documentation - be concise and practical. You can use simple lists and numbered lists, but avoid markdown formatting like **bold** or ## headers. Always match the language of your response to the user's question."""
 
-human_template = """Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+human_template = """Use the following pieces of retrieved context to answer the question. 
 
-Context:
-{context}
-
-Question: {question}
-
-Provide a comprehensive, detailed answer that thoroughly addresses the question using the context provided above. You can use simple lists (-) and numbered lists (1., 2., 3.) when helpful, but avoid markdown formatting like **bold** or ## headers."""
-
-human_template_platform = """Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+IMPORTANT: 
+- If the context is empty or doesn't contain relevant information, respond naturally and helpfully. Don't use formal phrases like "Based on the provided context, there is no specific information available" - instead, provide a friendly, natural response that acknowledges the limitation and offers helpful suggestions.
+- Respond in the same language as the question. If the question is in Vietnamese, respond in Vietnamese. If in English, respond in English.
 
 Context:
 {context}
 
 Question: {question}
 
-Provide a concise, clear answer similar to knowledge base documentation style. You can use simple lists (-) and numbered lists (1., 2., 3.) when helpful, but avoid markdown formatting like **bold** or ## headers."""
+Provide a comprehensive, detailed answer that thoroughly addresses the question using the context provided above. If the context doesn't contain the answer, respond naturally and suggest alternatives. You can use simple lists (-) and numbered lists (1., 2., 3.) when helpful, but avoid markdown formatting like **bold** or ## headers. Remember to respond in the same language as the question."""
+
+human_template_platform = """Use the following pieces of retrieved context to answer the question.
+
+IMPORTANT: 
+- If the context is empty or doesn't contain relevant information, respond naturally and helpfully. Don't use formal phrases like "Based on the provided context, there is no specific information available" - instead, provide a friendly, natural response that acknowledges the limitation and offers helpful suggestions.
+- Respond in the same language as the question. If the question is in Vietnamese, respond in Vietnamese. If in English, respond in English.
+
+Context:
+{context}
+
+Question: {question}
+
+Provide a concise, clear answer similar to knowledge base documentation style. If the context doesn't contain the answer, respond naturally and suggest alternatives. You can use simple lists (-) and numbered lists (1., 2., 3.) when helpful, but avoid markdown formatting like **bold** or ## headers. Remember to respond in the same language as the question."""
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_message),

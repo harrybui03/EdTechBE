@@ -3,9 +3,11 @@ FastAPI server for Agentic RAG API.
 Provides REST API endpoints for the frontend to interact with the RAG system.
 """
 
+import asyncio
 import io
 import logging
 import sys
+import threading
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Union
@@ -20,7 +22,6 @@ from pydantic import BaseModel, Field, ConfigDict
 # When running directly, add path to sys.path
 try:
     from .graph.graph import app
-    from .database import fetch_courses_slugs
 except ImportError:
     # Fallback: add agentic_rag to path if running directly
     current_file = Path(__file__).resolve()
@@ -28,7 +29,6 @@ except ImportError:
     if str(agentic_rag_dir) not in sys.path:
         sys.path.insert(0, str(agentic_rag_dir))
     from graph.graph import app
-    from database import fetch_courses_slugs
 
 # Only load .env file if not in Docker (override=False prevents overriding existing env vars)
 # In Docker, environment variables are set by docker-compose.yml
@@ -45,12 +45,91 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agentic_rag.api")
 
+# Global flag to track if re-ingestion is in progress
+_reingest_lock = threading.Lock()
+_reingest_in_progress = False
+
+
+def rebuild_vectorstore():
+    """Rebuild vectorstore with latest data"""
+    global _reingest_in_progress
+    
+    with _reingest_lock:
+        if _reingest_in_progress:
+            logger.info("[SCHEDULER] Re-ingestion already in progress, skipping...")
+            return
+        
+        _reingest_in_progress = True
+    
+    try:
+        logger.info("[SCHEDULER] Starting scheduled re-ingestion...")
+        
+        # Import ingestion module to rebuild vectorstore
+        try:
+            from .ingestion import build_vectorstore
+        except ImportError:
+            # Fallback for direct execution
+            current_file = Path(__file__).resolve()
+            agentic_rag_dir = current_file.parent
+            if str(agentic_rag_dir) not in sys.path:
+                sys.path.insert(0, str(agentic_rag_dir))
+            from ingestion import build_vectorstore
+        
+        # Rebuild vectorstore
+        new_vectorstore = build_vectorstore()
+        
+        # Update global retriever and vectorstore
+        import ingestion
+        ingestion.vectorstore = new_vectorstore
+        ingestion.retriever = new_vectorstore.as_retriever(search_kwargs={"k": 7})
+        
+        # Update in graph nodes
+        from .graph.nodes import retrieve as retrieve_module
+        retrieve_module.vectorstore = new_vectorstore
+        retrieve_module.retriever = new_vectorstore.as_retriever(search_kwargs={"k": 7})
+        
+        logger.info("[SCHEDULER] Scheduled re-ingestion completed successfully")
+        
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Error during scheduled re-ingestion: {str(e)}", exc_info=True)
+    finally:
+        with _reingest_lock:
+            _reingest_in_progress = False
+
+
+async def periodic_reingest():
+    """Background task to rebuild vectorstore every 2 hours"""
+    # Wait 2 hours before first run (to avoid blocking startup)
+    await asyncio.sleep(2 * 60 * 60)  # 2 hours in seconds
+    
+    while True:
+        try:
+            # Run rebuild in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, rebuild_vectorstore)
+            
+            # Wait 2 hours before next run
+            await asyncio.sleep(2 * 60 * 60)  # 2 hours in seconds
+            
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Error in periodic re-ingest task: {str(e)}", exc_info=True)
+            # Wait 1 hour before retrying on error
+            await asyncio.sleep(60 * 60)  # 1 hour in seconds
+
+
 # Initialize FastAPI app
 api_app = FastAPI(
     title="Agentic RAG API",
     description="API for querying the Agentic RAG system",
     version="1.0.0",
 )
+
+
+@api_app.on_event("startup")
+async def startup_event():
+    """Start background task for periodic re-ingestion on startup"""
+    logger.info("[SCHEDULER] Starting periodic re-ingestion task (every 2 hours)...")
+    asyncio.create_task(periodic_reingest())
 
 # Configure CORS
 api_app.add_middleware(
@@ -265,10 +344,6 @@ class AskV1Response(BaseModel):
     """Response model for /api/v1/ask endpoint"""
 
     answer: str = Field(..., description="The generated answer")
-    sources: List[Union[CourseSource, LessonSource]] = Field(
-        default_factory=list, 
-        description="Source courses (when no lesson_id) or lesson sources (when lesson_id is provided)"
-    )
 
 
 @api_app.post("/api/v1/ask", response_model=AskV1Response)
@@ -278,19 +353,14 @@ async def ask_v1(request: AskV1Request) -> AskV1Response:
     
     This endpoint processes the question through the RAG pipeline and returns:
     - The generated answer
-    - Source courses (when no lesson_id) or lesson sources (when lesson_id is provided)
     
     Only the last 5 questions from chat_history will be used.
-    
-    Source filtering logic:
-    - If lesson_id is provided: Returns sources from that specific lesson (prioritizes "transcript" as main content, falls back to "lesson" if no transcript)
-    - If lesson_id is not provided: Returns course sources (doc_type == "course_overview")
     
     Args:
         request: AskV1Request containing question, user_id, optional lesson_id and chat_history
         
     Returns:
-        AskV1Response with answer and sources (courses or lessons depending on lesson_id)
+        AskV1Response with answer only
         
     Raises:
         HTTPException: If question is empty or processing fails
@@ -339,114 +409,10 @@ async def ask_v1(request: AskV1Request) -> AskV1Response:
             logger.info(f"[ASK_V1] Agentic trace:\n{trace}")
 
         answer = result.get("generation", str(result))
-        sources_raw = result.get("sources", [])
-        lesson_id = request.lesson_id.strip() if request.lesson_id and request.lesson_id.strip() else None
-
-        sources = []
         
-        if lesson_id:
-            # When lesson_id is provided: Return lesson sources
-            # NOTE: Transcript is the PRIMARY content of a lesson (video transcript)
-            # We prioritize transcript over lesson document metadata
-            lesson_sources_map: Dict[str, Dict[str, any]] = {}
-            
-            # Collect lesson documents - prioritize transcript (main content) over lesson metadata
-            for source_raw in sources_raw:
-                if isinstance(source_raw, dict):
-                    doc_type = source_raw.get("doc_type")
-                    doc_lesson_id = source_raw.get("lesson_id")
-                    
-                    # Only include documents from the specified lesson
-                    if doc_lesson_id == lesson_id and doc_type in ["lesson", "transcript"]:
-                        lesson_id_str = str(doc_lesson_id)
-                        course_id = source_raw.get("course_id")
-                        course_title = source_raw.get("course_title")
-                        lesson_title = source_raw.get("lesson_title")
-                        
-                        # Priority: transcript (main content) > lesson (metadata fallback)
-                        if lesson_id_str not in lesson_sources_map:
-                            # First document found - store it
-                            lesson_sources_map[lesson_id_str] = {
-                                "lesson_id": lesson_id_str,
-                                "lesson_title": lesson_title,
-                                "course_id": str(course_id) if course_id else None,
-                                "course_title": course_title,
-                                "doc_type": doc_type
-                            }
-                        elif doc_type == "transcript" and lesson_sources_map[lesson_id_str]["doc_type"] == "lesson":
-                            # Replace lesson metadata with transcript (transcript is main content)
-                            lesson_sources_map[lesson_id_str] = {
-                                "lesson_id": lesson_id_str,
-                                "lesson_title": lesson_title,
-                                "course_id": str(course_id) if course_id else None,
-                                "course_title": course_title,
-                                "doc_type": "transcript"
-                            }
-            
-            # Fetch course slugs for lesson sources
-            course_ids_for_slugs = [
-                info["course_id"] 
-                for info in lesson_sources_map.values() 
-                if info.get("course_id")
-            ]
-            if course_ids_for_slugs:
-                course_slugs = fetch_courses_slugs(course_ids_for_slugs)
-                for lesson_id_str, lesson_info in lesson_sources_map.items():
-                    course_id_str = lesson_info.get("course_id")
-                    if course_id_str:
-                        lesson_info["course_slug"] = course_slugs.get(course_id_str)
-            
-            # Build sources list with LessonSource
-            for lesson_id_str, lesson_info in lesson_sources_map.items():
-                sources.append(LessonSource(
-                    lesson_id=lesson_info["lesson_id"],
-                    lesson_title=lesson_info.get("lesson_title"),
-                    course_id=lesson_info.get("course_id"),
-                    course_title=lesson_info.get("course_title"),
-                    course_slug=lesson_info.get("course_slug"),
-                    doc_type=lesson_info["doc_type"]
-                ))
-            
-            logger.info(f"[ASK_V1] Response prepared: answer length={len(answer)}, lesson sources={len(sources)} (lesson_id={lesson_id})")
-        else:
-            # When no lesson_id: Return course sources (course_overview documents)
-            course_ids: Set[str] = set()
-            course_sources_map: Dict[str, Dict[str, str]] = {}
-            
-            for source_raw in sources_raw:
-                if isinstance(source_raw, dict):
-                    doc_type = source_raw.get("doc_type")
-                    # Only include course_overview documents
-                    if doc_type == "course_overview":
-                        course_id = source_raw.get("course_id")
-                        course_title = source_raw.get("course_title")
-                        
-                        if course_id and course_title:
-                            course_id_str = str(course_id)
-                            course_ids.add(course_id_str)
-                            # Store course info, will update with slug later
-                            if course_id_str not in course_sources_map:
-                                course_sources_map[course_id_str] = {
-                                    "title": course_title
-                                }
-            
-            # Fetch slugs for all course_ids
-            if course_ids:
-                course_slugs = fetch_courses_slugs(list(course_ids))
-                
-                # Build sources list with title and slug
-                for course_id_str, course_info in course_sources_map.items():
-                    slug = course_slugs.get(course_id_str)
-                    if slug:  # Only include if slug exists
-                        sources.append(CourseSource(
-                            title=course_info["title"],
-                            slug=slug
-                        ))
-            
-            logger.info(f"[ASK_V1] Response prepared: answer length={len(answer)}, course sources={len(sources)}")
+        logger.info(f"[ASK_V1] Response prepared: answer length={len(answer)}")
         return AskV1Response(
             answer=answer,
-            sources=sources,
         )
 
     except Exception as e:

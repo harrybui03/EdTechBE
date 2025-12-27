@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict
 
 from graph.state import GraphState
+from graph.nodes.retrieve import _detect_language
 
 logger = logging.getLogger("agentic_rag.reject")
 
@@ -44,6 +45,9 @@ How can I help you with your learning today?"""
     updated_history = list(chat_history) if chat_history else []
     updated_history.append((question, rejection_message))
     
+    # Detect and preserve original language
+    original_language = state.get("original_language") or _detect_language(question)
+    
     return {
         "generation": rejection_message,
         "documents": [],  # No documents for rejected questions
@@ -51,4 +55,5 @@ How can I help you with your learning today?"""
         "sources": [],  # No sources for rejected questions
         "user_id": state.get("user_id"),
         "chat_history": updated_history,
+        "original_language": original_language,  # Preserve original language
     }

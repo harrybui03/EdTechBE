@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 from graph.state import GraphState
 from graph.chains.llm_config import create_llm, rate_limit_delay
+from graph.nodes.retrieve import _detect_language
 
 logger = logging.getLogger("agentic_rag.greeting")
 
@@ -113,6 +114,9 @@ If they say goodbye, respond appropriately."""),
     updated_history = list(chat_history) if chat_history else []
     updated_history.append((question, generation))
     
+    # Detect and preserve original language
+    original_language = state.get("original_language") or _detect_language(question)
+    
     return {
         "generation": generation,
         "documents": [],  # No documents for greeting
@@ -120,5 +124,6 @@ If they say goodbye, respond appropriately."""),
         "sources": [],  # No sources for greeting
         "user_id": state.get("user_id"),
         "chat_history": updated_history,
+        "original_language": original_language,  # Preserve original language
     }
 

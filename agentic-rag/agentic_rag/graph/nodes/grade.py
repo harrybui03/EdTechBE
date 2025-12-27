@@ -32,6 +32,7 @@ def grade_documents(state: GraphState) -> Dict[str, Any]:
             "question": question,
             "user_id": state.get("user_id"),
             "chat_history": state.get("chat_history", []),
+            "original_language": state.get("original_language"),  # Preserve original language
         }
 
     # Use batch grading for 2+ documents to reduce API calls
@@ -114,4 +115,5 @@ def grade_documents(state: GraphState) -> Dict[str, Any]:
         "lesson_id": state.get("lesson_id"),  # Preserve lesson_id
         "is_platform_question": state.get("is_platform_question", False),  # Preserve platform question flag
         "chat_history": state.get("chat_history", []),
+        "original_language": state.get("original_language"),  # Preserve original language
     }
