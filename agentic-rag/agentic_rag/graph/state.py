@@ -30,3 +30,4 @@ class GraphState(TypedDict, total=False):
     chat_history: List[Tuple[str, str]]
     regeneration_count: int
     web_search_count: int  # Track number of web search attempts to prevent loops
+    original_language: str  # Language of the original question (e.g., 'vi', 'en')
