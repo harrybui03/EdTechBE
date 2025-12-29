@@ -37,7 +37,9 @@ public interface CourseRepository extends JpaRepository<Course, UUID>, JpaSpecif
             "JOIN c.instructors ci " +
             "LEFT JOIN Transaction t ON t.course = c AND t.status = 'PAID' " +
             "WHERE ci.user.id = :instructorId " +
-            "GROUP BY c.id, c.title, c.creation",
+            "GROUP BY c.id, c.title, c.creation " +
+            "ORDER BY COALESCE(SUM(t.amount), 0) DESC, " +
+            "(SELECT COUNT(e.id) FROM Enrollment e WHERE e.course.id = c.id) DESC",
             countQuery = "SELECT COUNT(c) FROM Course c JOIN c.instructors ci WHERE ci.user.id = :instructorId")
     Page<PerformanceReportItem> getCoursePerformanceReport(@Param("instructorId") UUID instructorId, Pageable pageable);
 }

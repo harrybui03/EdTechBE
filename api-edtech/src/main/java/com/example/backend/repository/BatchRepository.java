@@ -33,7 +33,9 @@ public interface BatchRepository extends JpaRepository<Batch, UUID>, JpaSpecific
             "JOIN b.instructors bi " +
             "LEFT JOIN Transaction t ON t.batch = b AND t.status = 'PAID' " +
             "WHERE bi.instructor.id = :instructorId " +
-            "GROUP BY b.id, b.title, b.createdAt",
+            "GROUP BY b.id, b.title, b.createdAt " +
+            "ORDER BY COALESCE(SUM(t.amount), 0) DESC, " +
+            "(SELECT COUNT(t2.id) FROM Transaction t2 WHERE t2.batch.id = b.id AND t2.status = 'PAID') DESC",
             countQuery = "SELECT COUNT(b) FROM Batch b JOIN b.instructors bi WHERE bi.instructor.id = :instructorId")
     Page<PerformanceReportItem> getBatchPerformanceReport(@Param("instructorId") UUID instructorId, Pageable pageable);
 }
